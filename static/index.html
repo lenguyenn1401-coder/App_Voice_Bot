@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0f62fe">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Stem IOT">
+  <meta name="description" content="App Stem IOT — Điều khiển thiết bị ESP32-S3, quản lý lịch học STEM và trợ lý AI.">
+  <title>App Stem IOT · Bảng điều khiển &amp; Lịch học</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Đến nội dung chính</a>
+
+  <header class="site-header">
+    <a class="brand" href="#iot-section">
+      <img class="brand-icon" src="/static/icons/icon.svg" alt="" width="28" height="28">
+      <span>App Stem IOT</span>
+    </a>
+
+    <nav class="top-nav" aria-label="Điều hướng chính">
+      <a href="#iot-section">Điều khiển IoT</a>
+      <a href="#calendar">Lịch tuần</a>
+      <a href="#assistant">Trợ lý AI</a>
+      <a href="#hardware-section">Phần cứng</a>
+    </nav>
+
+    <div class="header-actions">
+      <button id="pwa-install-btn" class="button subtle" type="button" hidden>Cài đặt app</button>
+      <button id="theme-toggle" class="button subtle" type="button" aria-label="Chuyển giao diện">Giao diện sáng</button>
+      <button id="open-settings" class="button subtle" type="button" aria-haspopup="dialog" aria-controls="preferences-dialog">Tùy chỉnh</button>
+      <div class="account-menu" id="account-menu">
+        <button id="account-trigger" class="button subtle" type="button" aria-expanded="false" aria-controls="account-popover">
+          <span id="account-label">Tài khoản</span> <span aria-hidden="true">⌄</span>
+        </button>
+        <div id="account-popover" class="account-popover" hidden>
+          <strong>Tài khoản đang dùng</strong>
+          <span id="account-identity" class="account-identity">Đang tải…</span>
+          <button id="account-settings" class="button subtle full-width" type="button">Tùy chỉnh trợ lý</button>
+          <button id="logout" class="button subtle full-width" type="button">Đăng xuất</button>
+        </div>
+      </div>
+      <button id="add-event" class="button primary" type="button">Thêm lịch</button>
+    </div>
+  </header>
+
+  <main id="main" class="page-shell">
+    <div id="offline-banner" class="notice warn" role="status" hidden>
+      Đang ngoại tuyến — Một số thao tác đồng bộ máy chủ tạm thời không khả dụng.
+    </div>
+    <div id="connection-error" class="notice error" role="alert" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <div class="status-strip" aria-label="Tổng quan trạng thái hệ thống">
+      <span id="today-label" class="meta-item">Đang tải ngày…</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <time id="clock-label" class="meta-item mono">--:--</time>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="ai-status" class="meta-item">Đang kiểm tra AI</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="device-status" class="meta-item">Đang kiểm tra thiết bị</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="sync-status" class="meta-item">Chưa đồng bộ</span>
+      <button id="refresh" class="text-button" type="button">Làm mới</button>
+    </div>
+
+    <!-- SECTION 1: STEM IOT DEVICE CONTROL -->
+    <section id="iot-section" class="panel iot-panel" aria-labelledby="iot-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Điều khiển phần cứng ESP32-S3</p>
+          <h1 id="iot-title">Bảng điều khiển STEM IoT</h1>
+        </div>
+        <div class="section-actions">
+          <label class="sr-only" for="iot-device-select">Chọn thiết bị ESP32-S3</label>
+          <select id="iot-device-select" class="select-input"></select>
+          <button id="add-device" class="button subtle" type="button">Ghép thiết bị mới</button>
+          <button id="iot-test-reminder" class="button primary" type="button">Phát thử nhắc lịch</button>
+        </div>
+      </div>
+
+      <div id="iot-empty" class="empty-box" hidden>
+        <strong>Chưa có thiết bị IoT nào được ghép nối.</strong>
+        <p class="muted">Đăng ký Device-Id của kit ESP32-S3 để nhận mã token kết nối và điều khiển từ xa.</p>
+        <button id="iot-empty-add" class="button primary" type="button">Ghép nối thiết bị đầu tiên</button>
+      </div>
+
+      <div id="iot-controls-wrap" class="iot-grid" hidden>
+        <div class="iot-block">
+          <div class="block-head">
+            <h2>Âm thanh &amp; Màn hình ST7789</h2>
+            <span id="iot-conn-label" class="status-text">Ngoại tuyến</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label-row">
+              <label for="iot-volume">Âm lượng loa MAX98357A</label>
+              <span id="iot-volume-val" class="mono tabular">75%</span>
+            </div>
+            <div class="slider-with-action">
+              <input id="iot-volume" type="range" min="0" max="100" step="1" value="75">
+              <button id="iot-mute-btn" class="button subtle" type="button" aria-pressed="false">Tắt tiếng</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label-row">
+              <label for="iot-backlight">Độ sáng đèn nền LCD (GPIO13)</label>
+              <span id="iot-backlight-val" class="mono tabular">85%</span>
+            </div>
+            <input id="iot-backlight" type="range" min="0" max="100" step="1" value="85">
+          </div>
+
+          <div class="control-row">
+            <span class="control-title">Chế độ hiển thị 240×240</span>
+            <div class="segmented" role="group" aria-label="Chế độ hiển thị màn hình">
+              <button type="button" class="seg-btn" data-display-mode="schedule">Lịch học</button>
+              <button type="button" class="seg-btn" data-display-mode="clock">Đồng hồ</button>
+              <button type="button" class="seg-btn" data-display-mode="emotion">Biểu cảm</button>
+              <button type="button" class="seg-btn" data-display-mode="sleep">Tạm nghỉ</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="iot-block">
+          <div class="block-head">
+            <h2>Ngõ ra GPIO &amp; Cơ cấu chấp hành</h2>
+            <span id="iot-last-cmd" class="muted small">Chưa gửi lệnh nào</span>
+          </div>
+
+          <div class="switch-list">
+            <button type="button" class="toggle-tile" id="gpio-led_status" aria-pressed="true">
+              <span>
+                <strong>Đèn báo trạng thái</strong>
+                <small class="muted">GPIO chỉ thị hoạt động trên mạch</small>
+              </span>
+              <span class="toggle-state" data-state>Đang bật</span>
+            </button>
+
+            <button type="button" class="toggle-tile" id="gpio-relay_lab" aria-pressed="false">
+              <span>
+                <strong>Relay nguồn thực hành</strong>
+                <small class="muted">Điều khiển tải DC / thiết bị STEM</small>
+              </span>
+              <span class="toggle-state" data-state>Đang tắt</span>
+            </button>
+
+            <button type="button" class="toggle-tile" id="gpio-buzzer_alert" aria-pressed="false">
+              <span>
+                <strong>Còi cảnh báo</strong>
+                <small class="muted">Phát âm báo nhanh khi cần chú ý</small>
+              </span>
+              <span class="toggle-state" data-state>Đang tắt</span>
+            </button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-label-row">
+              <label for="iot-servo">Góc quay Servo STEM</label>
+              <span id="iot-servo-val" class="mono tabular">90°</span>
+            </div>
+            <input id="iot-servo" type="range" min="0" max="180" step="5" value="90">
+          </div>
+
+          <dl class="telemetry-row">
+            <div>
+              <dt>Wi-Fi RSSI</dt>
+              <dd id="tel-rssi" class="mono tabular">-54 dBm</dd>
+            </div>
+            <div>
+              <dt>Octal PSRAM trống</dt>
+              <dd id="tel-psram" class="mono tabular">7680 KB</dd>
+            </div>
+            <div>
+              <dt>Nhiệt độ SoC</dt>
+              <dd id="tel-temp" class="mono tabular">41.2 °C</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2 & 3: CALENDAR + AGENDA/AI WORKSPACE -->
+    <div class="workspace">
+      <div class="main-column">
+        <section id="calendar" class="panel calendar-panel" aria-labelledby="calendar-title">
+          <div class="calendar-top">
+            <div>
+              <p class="eyebrow">Lịch trình thực hành &amp; học tập</p>
+              <h2 id="calendar-title">Tuần của bạn</h2>
+            </div>
+            <button id="copy-week" class="button subtle" type="button">Sao chép tuần</button>
+          </div>
+
+          <div class="calendar-toolbar">
+            <div class="week-nav">
+              <button id="previous-week" class="icon-button" type="button" aria-label="Tuần trước">‹</button>
+              <button id="current-week" class="button subtle" type="button">Hôm nay</button>
+              <button id="next-week" class="icon-button" type="button" aria-label="Tuần sau">›</button>
+            </div>
+            <strong id="week-label" aria-live="polite">Đang tải tuần…</strong>
+            <nav class="period-toolbar" aria-label="Chuyển nhanh theo khung giờ">
+              <button id="period-jump-00" class="period-jump" type="button">Cả ngày</button>
+              <button id="period-jump-06" class="period-jump" type="button">Sáng</button>
+              <button id="period-jump-12" class="period-jump" type="button">Chiều</button>
+              <button id="period-jump-18" class="period-jump" type="button">Tối</button>
+            </nav>
+          </div>
+
+          <p id="calendar-summary" class="sr-only" aria-live="polite">Đang tải lịch…</p>
+
+          <section class="day-agenda-panel legacy-day-agenda" aria-labelledby="day-agenda-title">
+            <div class="day-agenda-heading">
+              <div>
+                <h3 id="day-agenda-title">Lịch trong ngày</h3>
+                <p id="selected-day-label" class="muted">Đang tải ngày…</p>
+              </div>
+              <div class="day-stepper">
+                <button id="previous-day" class="icon-button" type="button" aria-label="Ngày trước">‹</button>
+                <button id="next-day" class="icon-button" type="button" aria-label="Ngày tiếp theo">›</button>
+              </div>
+            </div>
+            <nav id="day-navigation" class="day-navigation" aria-label="Chọn ngày trong tuần"></nav>
+            <div id="day-agenda" class="day-agenda-list" aria-live="polite" aria-busy="true">
+              <p class="state-message">Đang tải lịch trong ngày…</p>
+            </div>
+          </section>
+
+          <div id="calendar-empty" class="empty-calendar" hidden>
+            <div>
+              <strong>Tuần này chưa có lịch thực hành.</strong>
+              <p class="muted">Thêm lịch để tự động đồng bộ nhắc nhở xuống thiết bị ESP32-S3.</p>
+            </div>
+            <button id="add-first-event" class="button subtle" type="button">Tạo lịch đầu tiên</button>
+          </div>
+
+          <div id="calendar-scroll" class="calendar-scroll" tabindex="0" role="region" aria-label="Lịch tuần theo giờ">
+            <div id="week-grid" class="week-grid"></div>
+          </div>
+
+          <div class="calendar-footer">
+            <span>Nhấp vào ô trống để thêm lịch mới · Nhấp vào lịch để sửa hoặc xóa</span>
+          </div>
+        </section>
+
+        <!-- SECTION 4: FIRMWARE PINOUT & HARDWARE SPEC -->
+        <section id="hardware-section" class="panel hardware-panel" aria-labelledby="hardware-title">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Cấu hình từ firmware/board/config.h</p>
+              <h2 id="hardware-title">Sơ đồ chân &amp; Thiết bị đã ghép</h2>
+            </div>
+          </div>
+
+          <div class="hardware-split">
+            <div class="table-wrap">
+              <table class="spec-table">
+                <thead>
+                  <tr>
+                    <th>Thành phần</th>
+                    <th>Chân GPIO / Chuẩn</th>
+                    <th>Thông số</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Micro I2S</td>
+                    <td class="mono">WS 4 · SCK 5 · DIN 6</td>
+                    <td class="mono tabular">16 kHz mono</td>
+                  </tr>
+                  <tr>
+                    <td>Loa MAX98357A</td>
+                    <td class="mono">LRCK 16 · BCLK 15 · DOUT 7</td>
+                    <td class="mono tabular">24 kHz stereo</td>
+                  </tr>
+                  <tr>
+                    <td>Màn hình ST7789</td>
+                    <td class="mono">CLK 9 · MOSI 10 · RST 18 · DC 8 · CS 14 · BL 13</td>
+                    <td class="mono tabular">240×240 SPI</td>
+                  </tr>
+                  <tr>
+                    <td>Nút bấm vật lý</td>
+                    <td class="mono">BOOT 0 · VOL+ 40 · VOL- 39</td>
+                    <td>Ngắt phần cứng</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="paired-devices-box">
+              <h3>Thiết bị đã đăng ký</h3>
+              <ul id="device-list" class="device-list">
+                <li class="muted">Đang tải danh sách thiết bị…</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="side-column" aria-label="Tổng quan lịch và trợ lý AI">
+        <section class="panel agenda-panel" aria-labelledby="today-title">
+          <div class="panel-heading">
+            <h2 id="today-title">Hôm nay</h2>
+            <span class="muted small">Trong ngày</span>
+          </div>
+          <div id="today-list" class="agenda-list"><p class="muted">Đang tải…</p></div>
+        </section>
+
+        <section class="panel agenda-panel" aria-labelledby="upcoming-title">
+          <div class="panel-heading">
+            <h2 id="upcoming-title">Sắp tới</h2>
+            <span class="muted small">30 ngày</span>
+          </div>
+          <div id="upcoming-list" class="agenda-list"><p class="muted">Đang tải…</p></div>
+        </section>
+
+        <section class="panel reminders-panel" aria-labelledby="reminders-title">
+          <div class="panel-heading">
+            <h2 id="reminders-title">Nhắc lịch trên thiết bị</h2>
+          </div>
+          <div id="reminder-list" class="reminder-list"><p class="muted">Đang tải…</p></div>
+          <p class="panel-note">Chỉ đánh dấu “Đã phát” khi ESP32-S3 gửi xác nhận phát xong.</p>
+        </section>
+
+        <section id="assistant" class="panel chat-panel" aria-labelledby="chat-title">
+          <div class="panel-heading">
+            <div>
+              <h2 id="chat-title">Trợ lý AI STEM</h2>
+              <p class="muted small" id="model-label">Trợ lý STEM</p>
+            </div>
+          </div>
+
+          <div id="ai-help" class="notice" hidden>
+            AI chưa được cấu hình. Thêm <code>GEMINI_API_KEY</code> vào tệp <code>.env</code> trên máy chủ để bật trò chuyện AI. Lịch thủ công và điều khiển thiết bị IoT vẫn hoạt động bình thường.
+          </div>
+
+          <div id="chat-log" class="chat-log" role="log" aria-label="Cuộc trò chuyện với trợ lý" aria-live="polite" tabindex="0">
+            <div id="chat-welcome" class="chat-welcome">
+              <strong>Hỏi về lịch thực hành hoặc kỹ thuật ESP32-S3.</strong>
+              <p class="muted">Mọi thay đổi lịch đều chờ bạn xác nhận trước khi lưu.</p>
+              <button id="ask-today" class="suggestion" type="button">Hôm nay tôi có lịch gì?</button>
+            </div>
+          </div>
+
+          <div id="chat-confirmation" class="confirmation" hidden>
+            <strong>Xác nhận thay đổi lịch</strong>
+            <p id="chat-proposal"></p>
+            <div class="action-row">
+              <button id="chat-confirm" class="button primary" type="button">Xác nhận</button>
+              <button id="chat-cancel" class="button subtle" type="button">Hủy đề xuất</button>
+            </div>
+          </div>
+
+          <p id="chat-error" class="field-error" role="alert" hidden></p>
+
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="chat-input">Tin nhắn cho trợ lý</label>
+            <textarea id="chat-input" rows="2" maxlength="4000" placeholder="Hỏi về lịch hoặc mạch ESP32-S3…" required></textarea>
+            <button id="chat-send" class="button primary" type="submit">Gửi</button>
+          </form>
+
+          <div class="chat-footnote">
+            <span id="chat-state" role="status">Lịch chỉ đổi sau khi bạn xác nhận.</span>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Mobile Bottom Navigation -->
+  <nav class="mobile-bottom-nav" aria-label="Điều hướng nhanh trên di động">
+    <a href="#iot-section">IoT</a>
+    <a href="#calendar">Lịch</a>
+    <a href="#assistant">Trợ lý</a>
+    <a href="#hardware-section">Phần cứng</a>
+  </nav>
+
+  <!-- Dialogs -->
+  <dialog id="device-register-dialog" aria-labelledby="device-register-title">
+    <div class="dialog-heading">
+      <div>
+        <h2 id="device-register-title">Ghép nối thiết bị ESP32-S3</h2>
+        <p class="muted">Tạo mã token bảo mật cho kit STEM của bạn.</p>
+      </div>
+      <button id="device-register-close" class="icon-button" type="button" aria-label="Đóng">×</button>
+    </div>
+    <form id="device-register-form" class="stack-form">
+      <div class="field">
+        <label for="device-register-id">Mã thiết bị (Device-Id)</label>
+        <input id="device-register-id" name="device_id" maxlength="80" autocomplete="off" required placeholder="Ví dụ: esp32s3-lab-02">
+      </div>
+      <div class="field">
+        <label for="device-register-name">Tên gợi nhớ</label>
+        <input id="device-register-name" name="name" maxlength="80" autocomplete="off" required placeholder="Ví dụ: Kit STEM bàn 2">
+      </div>
+      <p id="device-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <span></span>
+        <button id="device-register-submit" class="button primary" type="submit">Tạo mã kết nối</button>
+      </div>
+    </form>
+    <div id="device-result" class="device-result" hidden>
+      <strong>Mã kết nối chỉ hiển thị một lần</strong>
+      <p class="muted">Sao chép và dán vào cấu hình Wi-Fi / firmware của thiết bị.</p>
+      <div class="device-secret-row">
+        <code id="device-token" class="mono"></code>
+        <button id="device-copy-token" class="button subtle" type="button">Sao chép</button>
+      </div>
+      <p id="device-copy-status" class="field-hint" role="status"></p>
+    </div>
+  </dialog>
+
+  <dialog id="preferences-dialog" aria-labelledby="preferences-title">
+    <div class="dialog-heading">
+      <div>
+        <h2 id="preferences-title">Tùy chỉnh trợ lý</h2>
+        <p class="muted">Tên gọi, phong cách phản hồi và giọng đọc Gemini.</p>
+      </div>
+      <button id="preferences-close" class="icon-button" type="button" aria-label="Đóng">×</button>
+    </div>
+    <form id="preferences-form" class="stack-form">
+      <div class="field">
+        <label for="assistant-name">Tên trợ lý</label>
+        <input id="assistant-name" name="assistant_name" maxlength="64" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="style-prompt">Phong cách trả lời</label>
+        <textarea id="style-prompt" name="style_prompt" rows="3" maxlength="1200" placeholder="Ví dụ: Trả lời ngắn gọn, dễ hiểu cho học sinh STEM."></textarea>
+      </div>
+      <div class="form-columns">
+        <div class="field">
+          <label for="preference-model">Mô hình</label>
+          <select id="preference-model" name="model" required></select>
+        </div>
+        <div class="field">
+          <label for="preference-voice">Giọng đọc</label>
+          <select id="preference-voice" name="voice" required></select>
+        </div>
+      </div>
+      <p id="preference-status" class="field-hint" role="status" aria-live="polite">Đang tải…</p>
+      <p id="preference-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <span></span>
+        <button id="save-preferences" class="button primary" type="submit">Lưu tùy chỉnh</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="event-dialog" aria-labelledby="event-dialog-title">
+    <form id="event-form" class="stack-form">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Lịch trình thực hành</p>
+          <h2 id="event-dialog-title">Thêm lịch mới</h2>
+        </div>
+        <button class="icon-button" type="button" data-close="event-dialog" aria-label="Đóng">×</button>
+      </div>
+      <div class="field">
+        <label for="event-title">Tên lịch</label>
+        <input id="event-title" name="title" maxlength="120" placeholder="Ví dụ: Lắp mạch ESP32-S3" required autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="event-date">Ngày</label>
+        <input id="event-date" name="date" type="date" min="0001-01-01" max="9999-12-31" required>
+      </div>
+      <div class="form-columns">
+        <div class="field">
+          <label for="event-start">Bắt đầu</label>
+          <input id="event-start" name="start" type="time" step="60" required>
+        </div>
+        <div class="field">
+          <label for="event-end">Kết thúc</label>
+          <input id="event-end" name="end" type="time" step="60" required>
+        </div>
+      </div>
+      <div class="field">
+        <label for="event-note">Ghi chú</label>
+        <textarea id="event-note" name="note" rows="3" maxlength="2000" placeholder="Chân GPIO, linh kiện hoặc nội dung cần chuẩn bị…"></textarea>
+      </div>
+      <div class="field">
+        <label for="event-reminder">Nhắc trước trên thiết bị (phút)</label>
+        <input id="event-reminder" name="remind_minutes" type="number" min="0" max="1440" step="1" value="10" required>
+      </div>
+      <p id="event-error" class="field-error" role="alert" hidden></p>
+      <p id="event-conflict" class="event-conflict" role="status" aria-live="polite" hidden></p>
+      <div id="delete-confirmation" class="confirmation danger-confirmation" hidden>
+        <strong>Xóa lịch này?</strong>
+        <p id="delete-summary"></p>
+        <div class="action-row">
+          <button id="confirm-delete" class="button danger" type="button">Xóa vĩnh viễn</button>
+          <button id="cancel-delete" class="button subtle" type="button">Giữ lại</button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="delete-event" class="button danger-quiet" type="button" hidden>Xóa lịch</button>
+        <div class="action-row">
+          <button id="event-cancel" class="button subtle" type="button" data-close="event-dialog">Hủy</button>
+          <button id="save-event" class="button primary" type="submit">Lưu lịch</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="copy-dialog" aria-labelledby="copy-title">
+    <form id="copy-form" class="stack-form">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">Nhân bản lịch tuần</p>
+          <h2 id="copy-title">Sao chép lịch tuần</h2>
+        </div>
+        <button class="icon-button" type="button" data-close="copy-dialog" aria-label="Đóng">×</button>
+      </div>
+      <p id="copy-source" class="muted"></p>
+      <div class="field">
+        <label for="copy-target">Chọn một ngày trong tuần đích</label>
+        <input id="copy-target" type="date" min="0001-01-01" max="9999-12-31" required>
+        <p id="copy-target-hint" class="field-hint"></p>
+      </div>
+      <p id="copy-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <span></span>
+        <div class="action-row">
+          <button id="copy-cancel" class="button subtle" type="button" data-close="copy-dialog">Hủy</button>
+          <button id="copy-submit" class="button primary" type="submit">Sao chép tuần</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="ios-install-dialog" aria-labelledby="ios-install-title">
+    <div class="dialog-heading">
+      <h2 id="ios-install-title">Cài đặt App Stem IOT trên iPhone / iPad</h2>
+      <button class="icon-button" type="button" data-close="ios-install-dialog" aria-label="Đóng">×</button>
+    </div>
+    <p class="muted">1. Nhấn nút <strong>Chia sẻ (Share)</strong> trên thanh công cụ Safari.</p>
+    <p class="muted">2. Cuộn xuống và chọn <strong>Thêm vào Màn hình chính (Add to Home Screen)</strong>.</p>
+    <div class="dialog-actions">
+      <span></span>
+      <button class="button primary" type="button" data-close="ios-install-dialog">Đã hiểu</button>
+    </div>
+  </dialog>
+
+  <noscript><p class="notice">Hãy bật JavaScript để sử dụng App Stem IOT.</p></noscript>
+</body>
+</html>

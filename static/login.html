@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0f62fe">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Stem IOT">
+  <title>Đăng nhập · App Stem IOT</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="auth-body">
+  <a class="skip-link" href="#main">Đến nội dung chính</a>
+  <header class="auth-header">
+    <a class="brand" href="/">
+      <img class="brand-icon" src="/static/icons/icon.svg" alt="" width="28" height="28">
+      <span>App Stem IOT</span>
+    </a>
+    <div class="header-right">
+      <button id="pwa-install-btn" class="button subtle" type="button" hidden>Cài đặt app</button>
+      <button id="theme-toggle" class="button subtle" type="button" aria-label="Chuyển giao diện">Giao diện sáng</button>
+    </div>
+  </header>
+
+  <main id="main" class="auth-shell">
+    <section class="auth-intro" aria-labelledby="auth-heading">
+      <p class="eyebrow">Nền tảng điều khiển STEM &amp; ESP32-S3</p>
+      <h1 id="auth-heading">Điều khiển thiết bị IoT, lịch thực hành và trợ lý AI.</h1>
+      <p class="auth-lead">
+        Quản lý kit ESP32-S3, điều chỉnh màn hình ST7789, âm thanh I2S, ngõ ra GPIO, lên lịch nhắc việc và đồng bộ với trợ lý Gemini trên một ứng dụng duy nhất.
+      </p>
+      <dl class="spec-summary">
+        <div>
+          <dt>Vi điều khiển</dt>
+          <dd class="mono">ESP32-S3 · 16MB Flash · Octal PSRAM</dd>
+        </div>
+        <div>
+          <dt>Hiển thị &amp; Âm thanh</dt>
+          <dd class="mono">ST7789 240×240 · MAX98357A · I2S Mic 16kHz</dd>
+        </div>
+        <div>
+          <dt>Ứng dụng di động</dt>
+          <dd>Hỗ trợ cài đặt PWA &amp; đóng gói CH Play (TWA)</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="panel auth-card" aria-labelledby="signin-heading">
+      <h2 id="signin-heading">Truy cập không gian làm việc</h2>
+      <p class="muted">Dùng ngay tài khoản mẫu có sẵn thiết bị ESP32-S3 hoặc đăng ký tài khoản mới của riêng bạn.</p>
+
+      <button id="demo-login" class="button primary full-width" type="button">
+        Vào nhanh với tài khoản Demo (ESP32-S3)
+      </button>
+
+      <div class="divider-label"><span>hoặc đăng nhập / đăng ký</span></div>
+
+      <form id="auth-form" class="stack-form">
+        <div class="field">
+          <label for="auth-username">Tên đăng nhập</label>
+          <input id="auth-username" name="username" required autocomplete="username" maxlength="80" placeholder="Ví dụ: lop_stem_01">
+        </div>
+        <div class="field">
+          <label for="auth-password">Mật khẩu (tối thiểu 12 ký tự khi đăng ký)</label>
+          <input id="auth-password" name="password" type="password" required autocomplete="current-password" minlength="12" maxlength="1024" placeholder="••••••••••••">
+        </div>
+        <p id="auth-error" class="field-error" role="alert" hidden></p>
+        <div class="action-row">
+          <button type="submit" class="button primary">Đăng nhập</button>
+          <button type="button" id="register" class="button subtle">Tạo tài khoản</button>
+        </div>
+      </form>
+
+      <details class="legacy-details">
+        <summary>Đăng nhập bằng mã truy cập quản trị</summary>
+        <form action="/login" class="stack-form">
+          <div class="field">
+            <label for="legacy-token">Mã truy cập web</label>
+            <input id="legacy-token" name="token" type="password" required autocomplete="off">
+          </div>
+          <button type="submit" class="button subtle">Đăng nhập bằng mã</button>
+        </form>
+      </details>
+    </section>
+  </main>
+
+  <dialog id="ios-install-dialog" aria-labelledby="ios-install-title">
+    <div class="dialog-heading">
+      <h2 id="ios-install-title">Cài đặt App Stem IOT trên iPhone / iPad</h2>
+      <button class="icon-button" type="button" data-close="ios-install-dialog" aria-label="Đóng">×</button>
+    </div>
+    <p class="muted">1. Nhấn nút <strong>Chia sẻ (Share)</strong> trên thanh công cụ Safari.</p>
+    <p class="muted">2. Cuộn xuống và chọn <strong>Thêm vào Màn hình chính (Add to Home Screen)</strong>.</p>
+    <div class="dialog-actions">
+      <span></span>
+      <button class="button primary" type="button" data-close="ios-install-dialog">Đã hiểu</button>
+    </div>
+  </dialog>
+</body>
+</html>
