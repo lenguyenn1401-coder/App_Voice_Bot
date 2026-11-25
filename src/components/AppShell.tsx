@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Activity,
   Bell,
+  CalendarDays,
   Car,
   Cpu,
   Flame,
@@ -27,6 +28,7 @@ import type { NotificationItem, ProjectId, UserProfile } from '../types';
 export type NavSection =
   | 'home'
   | 'projects'
+  | 'schedule'
   | 'project_voicebot'
   | 'project_car'
   | 'project_grill'
@@ -80,6 +82,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const sidebarItems: Array<{ id: NavSection; label: string; icon: React.ReactNode; roles?: UserProfile['role'][] }> = [
     { id: 'home', label: 'Tổng quan', icon: <Home className="w-4 h-4" /> },
     { id: 'projects', label: 'Dự án & Task', icon: <FolderKanban className="w-4 h-4" /> },
+    { id: 'schedule', label: 'Lịch tuần & Nhắc lịch', icon: <CalendarDays className="w-4 h-4" /> },
     { id: 'devices', label: 'Thiết bị ESP32', icon: <Cpu className="w-4 h-4" /> },
     { id: 'sensors', label: 'Dữ liệu cảm biến', icon: <Activity className="w-4 h-4" /> },
     { id: 'history', label: 'Lịch sử hoạt động', icon: <History className="w-4 h-4" /> },

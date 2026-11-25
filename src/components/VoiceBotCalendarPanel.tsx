@@ -74,6 +74,7 @@ export const VoiceBotCalendarPanel: React.FC = () => {
   const [formRemind, setFormRemind] = useState(10);
   const [savingEvent, setSavingEvent] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const [confirmDeleteStep, setConfirmDeleteStep] = useState(false);
 
   // Copy week modal
   const [copyOpen, setCopyOpen] = useState(false);
@@ -81,7 +82,40 @@ export const VoiceBotCalendarPanel: React.FC = () => {
   const [copyBusy, setCopyBusy] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
 
+  // Live GMT+7 clock
+  const [nowClock, setNowClock] = useState(() => {
+    try {
+      return new Intl.DateTimeFormat('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: 'Asia/Ho_Chi_Minh',
+      }).format(new Date());
+    } catch {
+      return '';
+    }
+  });
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const autoScrolledWeekRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      try {
+        setNowClock(
+          new Intl.DateTimeFormat('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            timeZone: 'Asia/Ho_Chi_Minh',
+          }).format(new Date())
+        );
+      } catch {
+        // ignore
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function refreshAll(targetWeek = week) {
     setLoading(true);
@@ -110,11 +144,43 @@ export const VoiceBotCalendarPanel: React.FC = () => {
     refreshAll(week);
   }, [week]);
 
+  // Auto-scroll hourly grid on week load/switch to 1h before earliest event (min 06:00)
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 6 * 64;
+    if (loading || !scrollRef.current) return;
+    if (autoScrolledWeekRef.current === week) return;
+    autoScrolledWeekRef.current = week;
+
+    let targetHour = 6;
+    if (events.length > 0) {
+      const minStart = Math.min(...events.map((ev) => toMinutes(ev.start)));
+      targetHour = Math.max(6, Math.floor(minStart / 60) - 1);
     }
-  }, []);
+    scrollRef.current.scrollTop = targetHour * 64;
+  }, [week, loading, events]);
+
+  function selectDay(isoDate: string) {
+    setSelectedDay(isoDate);
+    const weekEnd = addDaysIso(week, 6);
+    if (isoDate < week || isoDate > weekEnd) {
+      setWeek(mondayOfIso(isoDate));
+    }
+  }
+
+  const weekLabel = useMemo(() => {
+    const endIso = addDaysIso(week, 6);
+    try {
+      const fmt = new Intl.DateTimeFormat('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        timeZone: 'UTC',
+      });
+      const startStr = fmt.format(new Date(`${week}T12:00:00Z`));
+      const endStr = fmt.format(new Date(`${endIso}T12:00:00Z`));
+      return `Tuần ${startStr} – ${endStr}/${endIso.slice(0, 4)}`;
+    } catch {
+      return `Tuần ${week} → ${endIso}`;
+    }
+  }, [week]);
 
   const conflictWarning = useMemo(() => {
     if (!formDate || !formStart || !formEnd || formEnd <= formStart) return null;
@@ -137,6 +203,7 @@ export const VoiceBotCalendarPanel: React.FC = () => {
     setFormNote('');
     setFormRemind(10);
     setEditorError(null);
+    setConfirmDeleteStep(false);
     setEditorOpen(true);
   }
 
@@ -149,11 +216,13 @@ export const VoiceBotCalendarPanel: React.FC = () => {
     setFormNote(ev.note);
     setFormRemind(ev.remindMinutes);
     setEditorError(null);
+    setConfirmDeleteStep(false);
     setEditorOpen(true);
   }
 
   async function handleSaveEvent(e: React.FormEvent) {
     e.preventDefault();
+    if (confirmDeleteStep) return;
     if (!formTitle.trim()) {
       setEditorError('Vui lòng nhập tiêu đề lịch.');
       return;
@@ -185,6 +254,7 @@ export const VoiceBotCalendarPanel: React.FC = () => {
         });
       }
       setEditorOpen(false);
+      setConfirmDeleteStep(false);
       setSelectedDay(formDate);
       const nextMonday = mondayOfIso(formDate);
       if (nextMonday !== week) setWeek(nextMonday);
@@ -206,6 +276,7 @@ export const VoiceBotCalendarPanel: React.FC = () => {
         body: JSON.stringify({ revision: editingEvent.revision }),
       });
       setEditorOpen(false);
+      setConfirmDeleteStep(false);
       await refreshAll(week);
     } catch (err) {
       setEditorError(err instanceof Error ? err.message : 'Không thể xóa lịch.');
@@ -262,8 +333,18 @@ export const VoiceBotCalendarPanel: React.FC = () => {
               <h2 className="text-base font-bold flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-[#0F62FE]" /> Lịch thực hành & Nhắc lịch thiết bị (GMT+7)
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tuần {week} → {addDaysIso(week, 6)} · {events.length} lịch trong tuần
+              <p className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2 mt-0.5">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{weekLabel}</span>
+                <span>·</span>
+                <span>{events.length} lịch trong tuần</span>
+                {nowClock && (
+                  <>
+                    <span>·</span>
+                    <span className="font-mono text-[#0F62FE] dark:text-blue-400">
+                      Giờ hệ thống (GMT+7): {nowClock}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -306,7 +387,11 @@ export const VoiceBotCalendarPanel: React.FC = () => {
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setWeek(addDaysIso(week, -7))}
+                onClick={() => {
+                  const prevW = addDaysIso(week, -7);
+                  setWeek(prevW);
+                  setSelectedDay(prevW);
+                }}
                 className="w-9 h-9 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center cursor-pointer"
                 title="Tuần trước"
               >
@@ -324,7 +409,11 @@ export const VoiceBotCalendarPanel: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setWeek(addDaysIso(week, 7))}
+                onClick={() => {
+                  const nextW = addDaysIso(week, 7);
+                  setWeek(nextW);
+                  setSelectedDay(nextW);
+                }}
                 className="w-9 h-9 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center cursor-pointer"
                 title="Tuần sau"
               >
@@ -335,9 +424,9 @@ export const VoiceBotCalendarPanel: React.FC = () => {
             <div className="flex items-center gap-1">
               {[
                 { label: 'Cả ngày', h: 0 },
-                { label: 'Sáng', h: 6 },
-                { label: 'Chiều', h: 12 },
-                { label: 'Tối', h: 18 },
+                { label: 'Sáng (06:00)', h: 6 },
+                { label: 'Chiều (12:00)', h: 12 },
+                { label: 'Tối (18:00)', h: 18 },
               ].map((p) => (
                 <button
                   key={p.h}
@@ -351,11 +440,31 @@ export const VoiceBotCalendarPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Day Agenda Selector */}
+          {/* Day Agenda Selector with Prev/Next Day Stepper */}
           <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#0B111A] border border-slate-200/70 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold capitalize">{formatDayVi(selectedDay)}</div>
-              <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => selectDay(addDaysIso(selectedDay, -1))}
+                  title="Ngày trước"
+                  aria-label="Ngày trước"
+                  className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131C2A] flex items-center justify-center hover:border-[#0F62FE] cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <div className="text-xs font-bold capitalize px-1">{formatDayVi(selectedDay)}</div>
+                <button
+                  type="button"
+                  onClick={() => selectDay(addDaysIso(selectedDay, 1))}
+                  title="Ngày sau"
+                  aria-label="Ngày sau"
+                  className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131C2A] flex items-center justify-center hover:border-[#0F62FE] cursor-pointer"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
                 {WEEKDAY_SHORT.map((lbl, idx) => {
                   const date = addDaysIso(week, idx);
                   const active = date === selectedDay;
@@ -364,7 +473,7 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                     <button
                       key={date}
                       type="button"
-                      onClick={() => setSelectedDay(date)}
+                      onClick={() => selectDay(date)}
                       className={`px-2 py-1 rounded-md text-[11px] font-semibold cursor-pointer ${
                         active
                           ? 'bg-[#0F62FE] text-white'
@@ -404,11 +513,35 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                       {ev.start} – {ev.end} (Nhắc trước {ev.remindMinutes}p)
                     </div>
                     <div className="text-xs font-bold truncate mt-0.5">{ev.title}</div>
+                    {ev.note && (
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{ev.note}</div>
+                    )}
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Empty Week Banner (Legacy Parity) */}
+          {!loading && events.length === 0 && (
+            <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/25 border border-dashed border-blue-300 dark:border-blue-800 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  Tuần này chưa có lịch thực hành nào
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Bấm nút bên cạnh hoặc nhấp trực tiếp vào lưới giờ bên dưới để tạo lịch và đặt nhắc nhở trên ESP32-S3.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => openNewEvent(selectedDay)}
+                className="h-9 px-3.5 rounded-lg bg-[#0F62FE] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" /> Tạo lịch đầu tiên
+              </button>
+            </div>
+          )}
 
           {/* 24-Hour Weekly Grid */}
           <div
@@ -424,28 +557,41 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                 const date = addDaysIso(week, i);
                 const isToday = date === today;
                 return (
-                  <div
+                  <button
                     key={date}
-                    className={`sticky top-0 z-10 border-b border-r border-slate-200 dark:border-slate-800 px-2 py-2 text-center ${
-                      isToday ? 'bg-blue-50 dark:bg-blue-950/60 text-[#0F62FE]' : 'bg-slate-50 dark:bg-[#131C2A]'
+                    type="button"
+                    onClick={() => selectDay(date)}
+                    className={`sticky top-0 z-10 border-b border-r border-slate-200 dark:border-slate-800 px-2 py-2 text-center cursor-pointer ${
+                      isToday
+                        ? 'bg-blue-50 dark:bg-blue-950/60 text-[#0F62FE]'
+                        : date === selectedDay
+                        ? 'bg-slate-100 dark:bg-slate-800/80'
+                        : 'bg-slate-50 dark:bg-[#131C2A]'
                     }`}
                   >
                     <div className="text-[10px] text-slate-500">{name}</div>
                     <div className="text-xs font-bold font-mono">{Number(date.slice(8))}</div>
-                  </div>
+                  </button>
                 );
               })}
 
               {/* Time Axis */}
               <div className="border-r border-slate-200 dark:border-slate-800">
-                {Array.from({ length: 24 }, (_, h) => (
-                  <div
-                    key={h}
-                    className="h-16 border-b border-slate-100 dark:border-slate-800/60 pr-1.5 pt-1 text-right text-[10px] font-mono text-slate-400"
-                  >
-                    {String(h).padStart(2, '0')}:00
-                  </div>
-                ))}
+                {Array.from({ length: 24 }, (_, h) => {
+                  const isPeriodBoundary = h === 6 || h === 12 || h === 18;
+                  return (
+                    <div
+                      key={h}
+                      className={`h-16 pr-1.5 pt-1 text-right text-[10px] font-mono ${
+                        isPeriodBoundary
+                          ? 'border-t-2 border-dashed border-[#0F62FE]/40 text-[#0F62FE] font-bold'
+                          : 'border-b border-slate-100 dark:border-slate-800/60 text-slate-400'
+                      }`}
+                    >
+                      {String(h).padStart(2, '0')}:00
+                    </div>
+                  );
+                })}
               </div>
 
               {/* 7 Day Columns (64px per hour => ~1.0667px per min) */}
@@ -470,14 +616,25 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                       date === today ? 'bg-blue-50/20 dark:bg-blue-950/10' : ''
                     }`}
                   >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <div key={h} className="h-16 border-b border-slate-100 dark:border-slate-800/40" />
-                    ))}
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const isPeriodBoundary = h === 6 || h === 12 || h === 18;
+                      return (
+                        <div
+                          key={h}
+                          className={`h-16 ${
+                            isPeriodBoundary
+                              ? 'border-t-2 border-dashed border-[#0F62FE]/30 border-b border-slate-100 dark:border-slate-800/40'
+                              : 'border-b border-slate-100 dark:border-slate-800/40'
+                          }`}
+                        />
+                      );
+                    })}
                     {colEvents.map((ev) => {
                       const startMin = toMinutes(ev.start);
                       const endMin = toMinutes(ev.end);
+                      const durationMin = endMin - startMin;
                       const topPx = (startMin / 60) * 64;
-                      const heightPx = Math.max(24, ((endMin - startMin) / 60) * 64 - 2);
+                      const heightPx = Math.max(24, (durationMin / 60) * 64 - 2);
                       return (
                         <button
                           key={ev.id}
@@ -493,6 +650,9 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                             {ev.start}–{ev.end}
                           </div>
                           <div className="text-[11px] font-semibold leading-tight truncate">{ev.title}</div>
+                          {durationMin >= 75 && ev.note && (
+                            <div className="text-[10px] opacity-80 leading-tight truncate mt-0.5">{ev.note}</div>
+                          )}
                         </button>
                       );
                     })}
@@ -503,7 +663,7 @@ export const VoiceBotCalendarPanel: React.FC = () => {
           </div>
 
           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-            Nhấp vào khung giờ trống để thêm lịch mới · Nhấp vào lịch để chỉnh sửa hoặc xóa.
+            Nhấp vào khung giờ trống để thêm lịch mới · Nhấp vào lịch để chỉnh sửa hoặc xóa · Vạch đứt nét tại 06:00, 12:00, 18:00 đánh dấu các buổi trong ngày.
           </div>
         </div>
       </div>
@@ -529,6 +689,9 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                 >
                   <div className="text-[11px] font-mono text-[#0F62FE]">{ev.start} – {ev.end}</div>
                   <div className="text-xs font-semibold truncate">{ev.title}</div>
+                  {ev.note && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{ev.note}</div>
+                  )}
                 </button>
               ))}
             </div>
@@ -552,6 +715,9 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                     {ev.date} · {ev.start} – {ev.end}
                   </div>
                   <div className="text-xs font-semibold truncate">{ev.title}</div>
+                  {ev.note && (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{ev.note}</div>
+                  )}
                 </button>
               ))}
             </div>
@@ -604,7 +770,10 @@ export const VoiceBotCalendarPanel: React.FC = () => {
               <h3 className="text-base font-bold">{editingEvent ? 'Chỉnh sửa lịch' : 'Thêm lịch mới'}</h3>
               <button
                 type="button"
-                onClick={() => setEditorOpen(false)}
+                onClick={() => {
+                  setEditorOpen(false);
+                  setConfirmDeleteStep(false);
+                }}
                 className="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-lg cursor-pointer"
               >
                 ×
@@ -688,12 +857,40 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                 <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 text-xs text-red-600">{editorError}</div>
               )}
 
+              {/* 2-Step Delete Confirmation (Legacy Parity) */}
+              {editingEvent && confirmDeleteStep && (
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 space-y-2.5">
+                  <div className="text-xs font-bold text-red-700 dark:text-red-300">Xóa lịch này?</div>
+                  <div className="text-xs text-red-600 dark:text-red-400">
+                    “{editingEvent.title}” · {editingEvent.date} ({editingEvent.start}–{editingEvent.end}) sẽ bị xóa vĩnh viễn khỏi hệ thống và nhắc lịch ESP32-S3.
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={savingEvent}
+                      onClick={() => setConfirmDeleteStep(false)}
+                      className="h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#131C2A] text-xs font-medium cursor-pointer"
+                    >
+                      Giữ lại
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingEvent}
+                      onClick={handleDeleteEvent}
+                      className="h-9 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {savingEvent ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between pt-2">
-                {editingEvent ? (
+                {editingEvent && !confirmDeleteStep ? (
                   <button
                     type="button"
                     disabled={savingEvent}
-                    onClick={handleDeleteEvent}
+                    onClick={() => setConfirmDeleteStep(true)}
                     className="h-10 px-3 rounded-xl border border-red-200 dark:border-red-900 text-red-600 text-sm font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" /> Xóa lịch
@@ -704,14 +901,17 @@ export const VoiceBotCalendarPanel: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setEditorOpen(false)}
+                    onClick={() => {
+                      setEditorOpen(false);
+                      setConfirmDeleteStep(false);
+                    }}
                     className="h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium cursor-pointer"
                   >
                     Hủy
                   </button>
                   <button
                     type="submit"
-                    disabled={savingEvent}
+                    disabled={savingEvent || confirmDeleteStep}
                     className="h-10 px-4 rounded-xl bg-[#0F62FE] text-white text-sm font-semibold cursor-pointer disabled:opacity-50"
                   >
                     {savingEvent ? 'Đang lưu...' : 'Lưu lịch'}

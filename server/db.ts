@@ -1253,6 +1253,13 @@ export function listCalendarEvents(startDate: string, endDate: string, _userId?:
   return rows.map(mapCalendarRow);
 }
 
+export function getCalendarEventById(id: string): CalendarEvent | null {
+  const row = db
+    .prepare('SELECT * FROM calendar_events WHERE id = ?')
+    .get(id) as Record<string, unknown> | undefined;
+  return row ? mapCalendarRow(row) : null;
+}
+
 function assertNoCalendarOverlap(date: string, start: string, end: string, excludeId = ''): void {
   const existing = db
     .prepare('SELECT id, title, start, end FROM calendar_events WHERE date = ? AND id != ?')

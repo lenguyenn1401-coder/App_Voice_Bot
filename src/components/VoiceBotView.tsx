@@ -229,6 +229,44 @@ export const VoiceBotView: React.FC<VoiceBotViewProps> = ({
   async function handleAsk(text: string, source: 'voice' | 'keyboard' = 'keyboard') {
     const trimmed = text.trim();
     if (!trimmed || isSending) return;
+
+    const normalized = trimmed.toLowerCase().replace(/[.!?]+$/g, '').trim();
+    if (pendingCalendar) {
+      if (['xác nhận', 'đồng ý', 'ok', 'xac nhan', 'dong y'].includes(normalized)) {
+        if (source === 'keyboard') setInputText('');
+        await confirmPendingCalendar();
+        return;
+      }
+      if (['hủy', 'huỷ', 'huy', 'không', 'khong', 'hủy đề xuất'].includes(normalized)) {
+        if (source === 'keyboard') setInputText('');
+        setPendingCalendar(null);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `u_cancel_${Date.now()}`,
+            conversationId: activeConvId,
+            sender: 'user',
+            text: trimmed,
+            source,
+            mode: voicebot.mode,
+            linkedCommandId: null,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: `b_cancel_${Date.now()}`,
+            conversationId: activeConvId,
+            sender: 'bot',
+            text: 'Đã hủy đề xuất; lịch không thay đổi.',
+            source: 'keyboard',
+            mode: voicebot.mode,
+            linkedCommandId: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
+    }
+
     setErrorMsg(null);
     setIsSending(true);
     if (source === 'keyboard') setInputText('');
@@ -295,30 +333,48 @@ export const VoiceBotView: React.FC<VoiceBotViewProps> = ({
   }
 
   async function confirmPendingCalendar() {
-    if (!pendingCalendar?.event) return;
+    if (!pendingCalendar) return;
     const proposal = pendingCalendar;
     setPendingCalendar(null);
     try {
-      await apiFetch('/api/events', {
-        method: 'POST',
-        body: JSON.stringify(proposal.event),
-      });
+      let botSummaryText = '';
+      if (proposal.action === 'propose_create' && proposal.event) {
+        await apiFetch('/api/events', {
+          method: 'POST',
+          body: JSON.stringify(proposal.event),
+        });
+        botSummaryText = `Đã tạo lịch "${proposal.event.title}" (${proposal.event.date}, ${proposal.event.start}–${proposal.event.end}) và đồng bộ nhắc lịch ESP32-S3.`;
+      } else if (proposal.action === 'propose_update' && proposal.eventId) {
+        await apiFetch(`/api/events/${encodeURIComponent(proposal.eventId)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...(proposal.event || {}), revision: proposal.revision }),
+        });
+        botSummaryText = `Đã cập nhật lịch thực hành thành công (${proposal.summary}) và đồng bộ lại hàng đợi ESP32-S3.`;
+      } else if (proposal.action === 'propose_delete' && proposal.eventId) {
+        await apiFetch(`/api/events/${encodeURIComponent(proposal.eventId)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ revision: proposal.revision }),
+        });
+        botSummaryText = `Đã xóa lịch thực hành (${proposal.summary}) và hủy nhắc lịch liên quan trên ESP32-S3.`;
+      }
       triggerHaptic([20, 30, 20]);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `cal_${Date.now()}`,
-          conversationId: activeConvId,
-          sender: 'bot',
-          text: `Đã lưu lịch thực hành "${proposal.event!.title}" (${proposal.event!.date}, ${proposal.event!.start}–${proposal.event!.end}) và đồng bộ xuống ESP32-S3.`,
-          source: 'keyboard',
-          mode: voicebot.mode,
-          linkedCommandId: null,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      if (botSummaryText) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `cal_${Date.now()}`,
+            conversationId: activeConvId,
+            sender: 'bot',
+            text: botSummaryText,
+            source: 'keyboard',
+            mode: voicebot.mode,
+            linkedCommandId: null,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Không thể lưu lịch đề xuất.');
+      setErrorMsg(err instanceof Error ? err.message : 'Không thể thực hiện thay đổi lịch đề xuất.');
     }
   }
 
@@ -494,7 +550,19 @@ export const VoiceBotView: React.FC<VoiceBotViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('calendar')}
+            className={`h-10 px-3.5 rounded-lg border text-sm font-medium flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'calendar'
+                ? 'border-[#0F62FE] bg-[#0F62FE] text-white'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131C2A] hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Calendar className={`w-4 h-4 ${activeTab === 'calendar' ? 'text-white' : 'text-[#0F62FE]'}`} />
+            <span>Lên lịch tuần</span>
+          </button>
           <button
             type="button"
             onClick={() => setPrefsOpen(true)}
@@ -703,10 +771,31 @@ export const VoiceBotView: React.FC<VoiceBotViewProps> = ({
 
               {/* Pending Calendar Proposal Confirmation Banner */}
               {pendingCalendar && (
-                <div className="mx-4 mb-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div
+                  className={`mx-4 mb-2 p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    pendingCalendar.action === 'propose_delete'
+                      ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800'
+                      : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800'
+                  }`}
+                >
                   <div>
-                    <div className="font-bold text-[#0F62FE] dark:text-blue-300">Xác nhận thay đổi lịch thực hành</div>
+                    <div
+                      className={`font-bold ${
+                        pendingCalendar.action === 'propose_delete'
+                          ? 'text-red-700 dark:text-red-300'
+                          : 'text-[#0F62FE] dark:text-blue-300'
+                      }`}
+                    >
+                      {pendingCalendar.action === 'propose_delete'
+                        ? 'Xác nhận xóa lịch thực hành'
+                        : pendingCalendar.action === 'propose_update'
+                        ? 'Xác nhận cập nhật lịch thực hành'
+                        : 'Xác nhận tạo lịch thực hành mới'}
+                    </div>
                     <div className="text-slate-700 dark:text-slate-200">{pendingCalendar.summary}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Bấm nút bên cạnh hoặc gõ “Xác nhận” / “Hủy”.
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -719,9 +808,17 @@ export const VoiceBotView: React.FC<VoiceBotViewProps> = ({
                     <button
                       type="button"
                       onClick={confirmPendingCalendar}
-                      className="h-8 px-3 rounded-lg bg-[#0F62FE] text-white font-semibold cursor-pointer"
+                      className={`h-8 px-3 rounded-lg text-white font-semibold cursor-pointer ${
+                        pendingCalendar.action === 'propose_delete'
+                          ? 'bg-red-600 hover:bg-red-700'
+                          : 'bg-[#0F62FE] hover:bg-blue-700'
+                      }`}
                     >
-                      Xác nhận lưu lịch
+                      {pendingCalendar.action === 'propose_delete'
+                        ? 'Xác nhận xóa lịch'
+                        : pendingCalendar.action === 'propose_update'
+                        ? 'Xác nhận cập nhật'
+                        : 'Xác nhận lưu lịch'}
                     </button>
                   </div>
                 </div>

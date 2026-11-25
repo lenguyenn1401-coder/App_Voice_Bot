@@ -267,7 +267,12 @@ export interface PendingVoiceCommand {
 export interface PendingCalendarProposal {
   action: 'propose_create' | 'propose_update' | 'propose_delete';
   summary: string;
-  event?: Omit<CalendarEvent, 'id' | 'userId' | 'revision'>;
+  event?: Partial<Omit<CalendarEvent, 'id' | 'userId' | 'revision'>> & {
+    title?: string;
+    date?: string;
+    start?: string;
+    end?: string;
+  };
   eventId?: string;
   revision?: number;
   conflict?: boolean;

@@ -13,6 +13,7 @@ import {
 } from './components/ManagementViews';
 import { SmartGrillView } from './components/SmartGrillView';
 import { StemCarView } from './components/StemCarView';
+import { VoiceBotCalendarPanel } from './components/VoiceBotCalendarPanel';
 import { VoiceBotView } from './components/VoiceBotView';
 import { apiFetch, getAuthToken, setAuthToken } from './lib/api';
 import type { PermissionRecord, RealtimeSnapshot, UserProfile } from './types';
@@ -223,6 +224,28 @@ export function App() {
           )}
           {activeNav === 'projects' && (
             <ProjectsTasksView snapshot={snapshot} onOpenProject={setActiveNav} />
+          )}
+          {activeNav === 'schedule' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                    Lịch tuần & Nhắc lịch thiết bị (GMT+7)
+                  </h1>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Quản lý lịch thực hành tuần, sao chép tuần, hẹn giờ nhắc loa ESP32-S3 và đặt lịch tự động qua Voice Bot AI.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('project_voicebot')}
+                  className="h-9 px-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131C2A] text-xs font-semibold hover:border-[#0F62FE] cursor-pointer"
+                >
+                  Đặt lịch bằng Voice Bot AI
+                </button>
+              </div>
+              <VoiceBotCalendarPanel />
+            </div>
           )}
           {activeNav === 'devices' && (
             <DevicesMqttView snapshot={snapshot} onSnapshotUpdate={setSnapshot} />

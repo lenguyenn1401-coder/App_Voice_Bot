@@ -1,5 +1,5 @@
-import { GoogleGenAI, Type } from '@google/genai';
-import { addDaysIso, listCalendarEvents, vnIsoNow, vnTodayDateStr } from './db.ts';
+import { GoogleGenAI, Type, type Tool } from '@google/genai';
+import { addDaysIso, getCalendarEventById, listCalendarEvents, vnIsoNow, vnTodayDateStr } from './db.ts';
 import type {
   PendingCalendarProposal,
   PendingVoiceCommand,
@@ -298,10 +298,28 @@ function checkCalendarIntentFallback(prompt: string, userId: string): VoiceAnaly
   const today = vnTodayDateStr();
   const tomorrow = addDaysIso(today, 1);
 
+  const extractTime = (s: string): { hour: number; min: number } | null => {
+    const colonMatch = s.match(/(\d{1,2}):(\d{2})/);
+    if (colonMatch) {
+      return {
+        hour: Math.min(22, Math.max(6, Number(colonMatch[1]))),
+        min: Math.min(59, Math.max(0, Number(colonMatch[2]))),
+      };
+    }
+    const hMatch = s.match(/(\d{1,2})\s*(?:h|gio)(?:\s*(\d{2}))?/);
+    if (hMatch) {
+      return {
+        hour: Math.min(22, Math.max(6, Number(hMatch[1]))),
+        min: hMatch[2] ? Math.min(59, Math.max(0, Number(hMatch[2]))) : 0,
+      };
+    }
+    return null;
+  };
+
   if (norm.includes('them lich') || norm.includes('dat lich') || norm.includes('tao lich')) {
-    const timeMatch = norm.match(/(\d{1,2})(?::(\d{2}))?\s*(?:h|gio)/);
-    const startHour = timeMatch ? Math.min(22, Math.max(6, Number(timeMatch[1]))) : 16;
-    const startMin = timeMatch && timeMatch[2] ? Number(timeMatch[2]) : 0;
+    const parsedTime = extractTime(norm);
+    const startHour = parsedTime ? parsedTime.hour : 16;
+    const startMin = parsedTime ? parsedTime.min : 0;
     const endHour = Math.min(23, startHour + 1);
     const pad = (n: number) => String(n).padStart(2, '0');
     const date = norm.includes('ngay mai') ? tomorrow : today;
@@ -325,6 +343,76 @@ function checkCalendarIntentFallback(prompt: string, userId: string): VoiceAnaly
         action: 'propose_create',
         summary: `Thêm lịch: ${ev.title} (${ev.date}, ${ev.start}–${ev.end})${conflict ? ' — Cảnh báo trùng giờ' : ''}`,
         event: ev,
+        conflict,
+      },
+    };
+  }
+
+  if (norm.includes('xoa lich') || norm.includes('huy lich')) {
+    const todayEvents = listCalendarEvents(today, addDaysIso(today, 7), userId);
+    const matched =
+      todayEvents.find((ev) => norm.includes(normalizeVi(ev.title).slice(0, 12))) || todayEvents[0];
+    if (!matched) {
+      return {
+        reply: 'Hiện không tìm thấy lịch phù hợp trong 7 ngày tới để xóa.',
+        detectedCommand: null,
+        requiresConfirmation: false,
+        calendarProposal: null,
+      };
+    }
+    return {
+      reply: `Đề xuất xóa lịch "${matched.title}" (${matched.start}–${matched.end} ngày ${matched.date}). Vui lòng bấm Xác nhận hoặc Hủy bên dưới.`,
+      detectedCommand: null,
+      requiresConfirmation: false,
+      calendarProposal: {
+        action: 'propose_delete',
+        eventId: matched.id,
+        revision: matched.revision,
+        summary: `Xóa lịch: ${matched.title} (${matched.date}, ${matched.start}–${matched.end})`,
+      },
+    };
+  }
+
+  if (norm.includes('sua lich') || norm.includes('doi gio') || norm.includes('doi lich')) {
+    const todayEvents = listCalendarEvents(today, addDaysIso(today, 7), userId);
+    const target =
+      todayEvents.find((ev) => norm.includes(normalizeVi(ev.title).slice(0, 12))) || todayEvents[0];
+    const parsedTime = extractTime(norm);
+    if (!target || !parsedTime) {
+      return {
+        reply: target
+          ? `Để đổi giờ lịch "${target.title}", hãy nhập giờ mới (ví dụ: "Đổi giờ lịch sang 15:30" hoặc "15h").`
+          : 'Không tìm thấy lịch để sửa.',
+        detectedCommand: null,
+        requiresConfirmation: false,
+        calendarProposal: null,
+      };
+    }
+    const startHour = parsedTime.hour;
+    const startMin = parsedTime.min;
+    const endHour = Math.min(23, startHour + 1);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const start = `${pad(startHour)}:${pad(startMin)}`;
+    const end = `${pad(endHour)}:${pad(startMin)}`;
+    const existing = listCalendarEvents(target.date, target.date, userId);
+    const conflict = existing.some((item) => item.id !== target.id && item.start < end && item.end > start);
+    return {
+      reply: `Đề xuất dời lịch "${target.title}" ngày ${target.date} sang ${start}–${end}${conflict ? ' (trùng giờ)' : ''}. Xác nhận hay hủy?`,
+      detectedCommand: null,
+      requiresConfirmation: false,
+      calendarProposal: {
+        action: 'propose_update',
+        eventId: target.id,
+        revision: target.revision,
+        event: {
+          title: target.title,
+          date: target.date,
+          start,
+          end,
+          note: target.note,
+          remindMinutes: target.remindMinutes,
+        },
+        summary: `Sửa lịch: ${target.title} (${target.date}) ${target.start}–${target.end} → ${start}–${end}`,
         conflict,
       },
     };
@@ -456,9 +544,21 @@ export async function generateVoiceBotReply(params: {
         'Nếu người dùng muốn thêm lịch mới, hãy gọi tool propose_create để chờ người dùng xác nhận trên giao diện.',
       ].join('\n');
 
-      const tools = [
+      const tools: Tool[] = [
         {
           functionDeclarations: [
+            {
+              name: 'list_calendar',
+              description: 'Đọc lịch từ cơ sở dữ liệu trong khoảng ngày YYYY-MM-DD.',
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  start_date: { type: Type.STRING },
+                  end_date: { type: Type.STRING },
+                },
+                required: ['start_date', 'end_date'],
+              },
+            },
             {
               name: 'propose_create',
               description: 'Đề xuất thêm một lịch thực hành STEM mới (cần người dùng xác nhận).',
@@ -475,53 +575,167 @@ export async function generateVoiceBotReply(params: {
                 required: ['title', 'date', 'start', 'end'],
               },
             },
+            {
+              name: 'propose_update',
+              description: 'Đề xuất sửa đúng một lịch theo ID (cần người dùng xác nhận).',
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  date: { type: Type.STRING },
+                  start: { type: Type.STRING },
+                  end: { type: Type.STRING },
+                  note: { type: Type.STRING },
+                  remindMinutes: { type: Type.INTEGER },
+                },
+                required: ['id'],
+              },
+            },
+            {
+              name: 'propose_delete',
+              description: 'Đề xuất xóa đúng một lịch theo ID (cần người dùng xác nhận).',
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                },
+                required: ['id'],
+              },
+            },
           ],
         },
       ];
 
-      const response = await aiClient.models.generateContent({
-        model: prefs?.model || DEFAULT_GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          tools,
-        },
-      });
+      const contents: Array<Record<string, unknown>> = [
+        { role: 'user', parts: [{ text: prompt }] },
+      ];
 
-      const calls = response.candidates?.[0]?.content?.parts?.filter((p) => p.functionCall).map((p) => p.functionCall) || [];
-      if (calls.length > 0 && calls[0]?.name === 'propose_create') {
-        const args = (calls[0].args || {}) as Record<string, unknown>;
-        const ev = {
-          title: String(args.title || 'Lịch thực hành STEM'),
-          date: String(args.date || today),
-          start: String(args.start || '09:00'),
-          end: String(args.end || '10:00'),
-          note: String(args.note || ''),
-          remindMinutes: Number(args.remindMinutes ?? 10),
-        };
-        const existing = listCalendarEvents(ev.date, ev.date, userId);
-        const conflict = existing.some((item) => item.start < ev.end && item.end > ev.start);
-        return {
-          reply: `Đề xuất tạo lịch: ${ev.title} (${ev.start}–${ev.end} ngày ${ev.date})${conflict ? ' — Có lịch trùng giờ' : ''}. Xác nhận hay hủy?`,
-          detectedCommand: null,
-          requiresConfirmation: false,
-          calendarProposal: {
-            action: 'propose_create',
-            summary: `Thêm lịch: ${ev.title} (${ev.date}, ${ev.start}–${ev.end})`,
-            event: ev,
-            conflict,
+      for (let round = 0; round < 4; round++) {
+        const response = await aiClient.models.generateContent({
+          model: prefs?.model || DEFAULT_GEMINI_MODEL,
+          contents: contents as unknown as string,
+          config: {
+            systemInstruction,
+            tools,
           },
-        };
-      }
+        });
 
-      const text = response.text?.trim();
-      if (text) {
-        return {
-          reply: text,
-          detectedCommand: null,
-          requiresConfirmation: false,
-          calendarProposal: null,
-        };
+        const candidate = response.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        const calls = parts.filter((p) => p.functionCall).map((p) => p.functionCall!);
+
+        if (calls.length === 0) {
+          const text = response.text?.trim();
+          if (text) {
+            return {
+              reply: text,
+              detectedCommand: null,
+              requiresConfirmation: false,
+              calendarProposal: null,
+            };
+          }
+          break;
+        }
+
+        const call = calls[0];
+        const args = (call.args || {}) as Record<string, unknown>;
+
+        if (call.name === 'list_calendar') {
+          const startDate = String(args.start_date || today);
+          const endDate = String(args.end_date || addDaysIso(today, 7));
+          const foundEvents = listCalendarEvents(startDate, endDate, userId).slice(0, 100);
+          if (candidate?.content) contents.push(candidate.content as unknown as Record<string, unknown>);
+          contents.push({
+            role: 'user',
+            parts: [{ functionResponse: { name: 'list_calendar', response: { events: foundEvents } } }],
+          });
+          continue;
+        }
+
+        if (call.name === 'propose_create') {
+          const ev = {
+            title: String(args.title || 'Lịch thực hành STEM'),
+            date: String(args.date || today),
+            start: String(args.start || '09:00'),
+            end: String(args.end || '10:00'),
+            note: String(args.note || ''),
+            remindMinutes: Number(args.remindMinutes ?? 10),
+          };
+          const existing = listCalendarEvents(ev.date, ev.date, userId);
+          const conflict = existing.some((item) => item.start < ev.end && item.end > ev.start);
+          return {
+            reply: `Đề xuất tạo lịch: ${ev.title} (${ev.start}–${ev.end} ngày ${ev.date})${conflict ? ' — Có lịch trùng giờ' : ''}. Xác nhận hay hủy?`,
+            detectedCommand: null,
+            requiresConfirmation: false,
+            calendarProposal: {
+              action: 'propose_create',
+              summary: `Thêm lịch: ${ev.title} (${ev.date}, ${ev.start}–${ev.end})`,
+              event: ev,
+              conflict,
+            },
+          };
+        }
+
+        if (call.name === 'propose_update') {
+          const current = getCalendarEventById(String(args.id || ''));
+          if (!current) {
+            return {
+              reply: 'Không tìm thấy mã lịch cần sửa. Bạn hãy kiểm tra lại nhé.',
+              detectedCommand: null,
+              requiresConfirmation: false,
+              calendarProposal: null,
+            };
+          }
+          const nextEv = {
+            title: String(args.title ?? current.title),
+            date: String(args.date ?? current.date),
+            start: String(args.start ?? current.start),
+            end: String(args.end ?? current.end),
+            note: String(args.note ?? current.note),
+            remindMinutes: Number(args.remindMinutes ?? current.remindMinutes),
+          };
+          const existing = listCalendarEvents(nextEv.date, nextEv.date, userId);
+          const conflict = existing.some(
+            (item) => item.id !== current.id && item.start < nextEv.end && item.end > nextEv.start
+          );
+          return {
+            reply: `Đề xuất sửa lịch "${current.title}" (${current.date}, ${current.start}–${current.end}) thành "${nextEv.title}" (${nextEv.date}, ${nextEv.start}–${nextEv.end})${conflict ? ' — Có lịch trùng giờ' : ''}. Xác nhận hay hủy?`,
+            detectedCommand: null,
+            requiresConfirmation: false,
+            calendarProposal: {
+              action: 'propose_update',
+              eventId: current.id,
+              revision: current.revision,
+              event: nextEv,
+              summary: `Sửa lịch "${current.title}" → "${nextEv.title}" (${nextEv.date}, ${nextEv.start}–${nextEv.end})`,
+              conflict,
+            },
+          };
+        }
+
+        if (call.name === 'propose_delete') {
+          const current = getCalendarEventById(String(args.id || ''));
+          if (!current) {
+            return {
+              reply: 'Không tìm thấy mã lịch cần xóa.',
+              detectedCommand: null,
+              requiresConfirmation: false,
+              calendarProposal: null,
+            };
+          }
+          return {
+            reply: `Đề xuất xóa lịch "${current.title}" (${current.start}–${current.end} ngày ${current.date}). Xác nhận hay hủy?`,
+            detectedCommand: null,
+            requiresConfirmation: false,
+            calendarProposal: {
+              action: 'propose_delete',
+              eventId: current.id,
+              revision: current.revision,
+              summary: `Xóa lịch: ${current.title} (${current.date}, ${current.start}–${current.end})`,
+            },
+          };
+        }
       }
     } catch {
       // Fallback gracefully below
