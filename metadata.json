@@ -1,0 +1,6 @@
+{
+  "name": "TP STEM Control",
+  "description": "Hệ thống quản lý, giám sát và điều khiển các dự án phần cứng STEM IoT (Voice Bot AI, Xe STEM, Bếp nướng thông minh) theo thời gian thực trên Web và Di động.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

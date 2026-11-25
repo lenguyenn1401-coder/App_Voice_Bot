@@ -512,36 +512,42 @@ function syncAndListReminders(userId = 'default', limit = 30) {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-Seed Demo STEM IoT Workspace
+// Pre-Seed Admin & Demo STEM IoT Workspaces
 // ---------------------------------------------------------------------------
+const ADMIN_PHONE = '0968230902';
+const ADMIN_USER_ID = 'admin-stem-iot-user';
+const SECONDARY_ADMIN_PHONE = '0901234567';
+const SECONDARY_ADMIN_USER_ID = 'admin-stem-iot-default';
 const DEMO_USERNAME = 'stemdemo';
 const DEMO_USER_ID = 'demo-stem-iot-user';
 
-function seedDemoWorkspace() {
-  if (usersById.has(DEMO_USER_ID)) return;
-  usersById.set(DEMO_USER_ID, {
-    id: DEMO_USER_ID,
-    username: DEMO_USERNAME,
-    passwordHash: hashPassword('stemiotdemo2026'),
-    email: null,
-  });
-  usersByName.set(DEMO_USERNAME, DEMO_USER_ID);
-  userPreferences.set(DEMO_USER_ID, { ...DEFAULT_PREFERENCES });
+function normalizePhone(raw) {
+  if (typeof raw !== 'string') return '';
+  let cleaned = raw.trim().replace(/[\s.-]/g, '');
+  if (cleaned.startsWith('+84')) cleaned = '0' + cleaned.slice(3);
+  else if (cleaned.startsWith('84') && cleaned.length >= 10) cleaned = '0' + cleaned.slice(2);
+  return cleaned;
+}
 
-  const demoDeviceId = 'esp32s3-stem-01';
-  const demoToken = 'stem-demo-device-token-' + crypto.randomBytes(12).toString('base64url');
-  const tokenHash = crypto.createHash('sha256').update(demoToken).digest('hex');
+function isValidPhone(phone) {
+  return /^0\d{8,10}$/.test(phone);
+}
+
+function seedUserWorkspace(userId, deviceId, deviceName) {
+  userPreferences.set(userId, { ...DEFAULT_PREFERENCES });
+  const token = 'stem-device-token-' + crypto.randomBytes(12).toString('base64url');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const device = {
-    device_id: demoDeviceId,
-    user_id: DEMO_USER_ID,
-    name: 'Board ESP32-S3 Phòng Lab',
+    device_id: deviceId,
+    user_id: userId,
+    name: deviceName,
     tokenHash,
     simulatedOnline: true,
     lastSeenMs: Date.now(),
     state: defaultDeviceState(),
     commandQueue: [],
   };
-  userDevices.set(demoDeviceId, device);
+  userDevices.set(deviceId, device);
   deviceTokens.set(tokenHash, device);
 
   const today = vnTodayDateStr();
@@ -573,7 +579,50 @@ function seedDemoWorkspace() {
     },
   ];
   for (const s of samples) {
-    createEvent(s, DEMO_USER_ID);
+    createEvent(s, userId);
+  }
+}
+
+function seedDemoWorkspace() {
+  if (!usersById.has(ADMIN_USER_ID)) {
+    usersById.set(ADMIN_USER_ID, {
+      id: ADMIN_USER_ID,
+      phone: ADMIN_PHONE,
+      username: `Quản trị viên (${ADMIN_PHONE})`,
+      role: 'admin',
+      passwordHash: hashPassword('Nguyenanh1'),
+      email: null,
+    });
+    usersByName.set(ADMIN_PHONE, ADMIN_USER_ID);
+    usersByName.set('admin', ADMIN_USER_ID);
+    seedUserWorkspace(ADMIN_USER_ID, 'esp32s3-admin-01', 'Board ESP32-S3 Quản trị');
+  }
+
+  if (!usersById.has(SECONDARY_ADMIN_USER_ID)) {
+    usersById.set(SECONDARY_ADMIN_USER_ID, {
+      id: SECONDARY_ADMIN_USER_ID,
+      phone: SECONDARY_ADMIN_PHONE,
+      username: `Quản trị viên (${SECONDARY_ADMIN_PHONE})`,
+      role: 'admin',
+      passwordHash: hashPassword('Admin@123456'),
+      email: null,
+    });
+    usersByName.set(SECONDARY_ADMIN_PHONE, SECONDARY_ADMIN_USER_ID);
+    seedUserWorkspace(SECONDARY_ADMIN_USER_ID, 'esp32s3-admin-02', 'Board ESP32-S3 Dự phòng');
+  }
+
+  if (!usersById.has(DEMO_USER_ID)) {
+    usersById.set(DEMO_USER_ID, {
+      id: DEMO_USER_ID,
+      phone: '0900000000',
+      username: DEMO_USERNAME,
+      role: 'member',
+      passwordHash: hashPassword('stemiotdemo2026'),
+      email: null,
+    });
+    usersByName.set(DEMO_USERNAME, DEMO_USER_ID);
+    usersByName.set('0900000000', DEMO_USER_ID);
+    seedUserWorkspace(DEMO_USER_ID, 'esp32s3-stem-01', 'Board ESP32-S3 Phòng Lab');
   }
 }
 
@@ -1064,34 +1113,44 @@ function parseCookies(req) {
 }
 
 function isHttpsRequest(req) {
-  return Boolean(req.secure || req.get('x-forwarded-proto') === 'https' || PUBLIC_BASE_URL.startsWith('https://'));
+  const origin = req.get('origin') || '';
+  const xfh = (req.get('x-forwarded-host') || '').split(',')[0].trim();
+  return Boolean(
+    req.secure
+    || req.get('x-forwarded-proto') === 'https'
+    || origin.startsWith('https://')
+    || xfh.endsWith('.run.app')
+    || PUBLIC_BASE_URL.startsWith('https://'),
+  );
 }
 
 function setAuthCookies(req, res, token) {
   const csrf = crypto.randomBytes(24).toString('base64url');
   const secure = isHttpsRequest(req);
   const sameSite = secure ? 'none' : 'lax';
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
+  const cookieBase = {
     sameSite,
     secure,
+    ...(secure ? { partitioned: true } : {}),
     maxAge: 86400 * 1000,
     path: '/',
+  };
+  res.cookie(SESSION_COOKIE, token, {
+    ...cookieBase,
+    httpOnly: true,
   });
   res.cookie(CSRF_COOKIE, csrf, {
+    ...cookieBase,
     httpOnly: false,
-    sameSite,
-    secure,
-    maxAge: 86400 * 1000,
-    path: '/',
   });
 }
 
 function clearAuthCookies(req, res) {
   const secure = isHttpsRequest(req);
   const sameSite = secure ? 'none' : 'lax';
-  res.clearCookie(SESSION_COOKIE, { path: '/', secure, sameSite });
-  res.clearCookie(CSRF_COOKIE, { path: '/', secure, sameSite });
+  const clearOpts = { path: '/', secure, sameSite, ...(secure ? { partitioned: true } : {}) };
+  res.clearCookie(SESSION_COOKIE, clearOpts);
+  res.clearCookie(CSRF_COOKIE, clearOpts);
 }
 
 app.use((req, res, next) => {
@@ -1144,12 +1203,17 @@ app.use('/api', (req, res, next) => {
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     const origin = req.get('origin');
-    const host = req.get('host');
-    const expectedOrigin = PUBLIC_BASE_URL.startsWith('https://')
-      ? PUBLIC_BASE_URL
-      : `${req.protocol}://${host}`;
-    const altOrigin = host ? `https://${host}` : '';
-    const originOk = !origin || origin === expectedOrigin || origin === altOrigin || origin === `http://${host}`;
+    const hostHeader = (req.get('host') || '').trim();
+    const forwardedHost = (req.get('x-forwarded-host') || '').split(',')[0].trim();
+    const allowedOrigins = new Set();
+    if (PUBLIC_BASE_URL) allowedOrigins.add(PUBLIC_BASE_URL);
+    for (const h of [hostHeader, forwardedHost]) {
+      if (h) {
+        allowedOrigins.add(`https://${h}`);
+        allowedOrigins.add(`http://${h}`);
+      }
+    }
+    const originOk = !origin || allowedOrigins.has(origin);
     if (req.get('x-requested-with') !== 'chatbot' || !originOk) {
       return res.status(403).json({ error: 'Yêu cầu khác nguồn bị từ chối.' });
     }
@@ -1193,6 +1257,7 @@ function authenticateDevice(req, res, next) {
 // HTML, PWA Manifest, Service Worker & Static Routes
 // ---------------------------------------------------------------------------
 app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   const user = getSession(req.cookies[SESSION_COOKIE] || '');
   if (!user) {
     return res.sendFile(path.join(ROOT, 'static', 'login.html'));
@@ -1211,17 +1276,25 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/manifest.webmanifest', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.type('application/manifest+json');
   res.sendFile(path.join(ROOT, 'static', 'manifest.webmanifest'));
 });
 
 app.get('/sw.js', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Service-Worker-Allowed', '/');
   res.type('application/javascript');
   res.sendFile(path.join(ROOT, 'static', 'sw.js'));
 });
 
-app.use('/static', express.static(path.join(ROOT, 'static')));
+app.use('/static', express.static(path.join(ROOT, 'static'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Auth API
@@ -1233,7 +1306,7 @@ app.get('/api/auth/me', (req, res) => {
 app.post('/api/auth/demo', (req, res) => {
   seedDemoWorkspace();
   const record = usersById.get(DEMO_USER_ID);
-  const user = { id: record.id, username: record.username, email: record.email };
+  const user = { id: record.id, phone: record.phone, username: record.username, role: record.role, email: record.email };
   revokeSession(req.cookies[SESSION_COOKIE] || '');
   setAuthCookies(req, res, createSession(user));
   return res.json({ user });
@@ -1251,37 +1324,62 @@ app.post('/api/auth/:action', (req, res) => {
     return res.status(404).json({ error: 'Not found' });
   }
   const data = req.body;
-  if (!data || typeof data !== 'object' || Array.isArray(data) ||
-      Object.keys(data).length !== 2 || !('username' in data) || !('password' in data)) {
-    return res.status(400).json({ error: 'Cần tên đăng nhập và mật khẩu.' });
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return res.status(400).json({ error: 'Dữ liệu đăng nhập không hợp lệ.' });
   }
-  const { username, password } = data;
-  if (typeof username !== 'string' || username.trim().length < 1 || username.trim().length > 80 || username.trim().toLowerCase() === 'default') {
-    return res.status(400).json({ error: 'Tên đăng nhập không hợp lệ.' });
-  }
-  if (typeof password !== 'string' || password.length < 1 || password.length > 1024 || (action === 'register' && password.length < 12)) {
-    return res.status(400).json({ error: 'Mật khẩu cần 12–1024 ký tự khi đăng ký.' });
-  }
-  const cleanName = username.trim();
-  const lookupKey = cleanName.toLowerCase();
 
   let user;
   if (action === 'register') {
-    if (usersByName.has(lookupKey)) {
-      return res.status(400).json({ error: 'Tên đăng nhập đã tồn tại.' });
+    const rawPhone = data.phone ?? data.username ?? '';
+    const password = data.password ?? '';
+    const confirmPassword = data.confirm_password ?? data.confirmPassword ?? '';
+    const phone = normalizePhone(rawPhone);
+
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({ error: 'Số điện thoại không hợp lệ (ví dụ: 0901234567).' });
     }
+    if (typeof password !== 'string' || password.length < 6 || password.length > 1024) {
+      return res.status(400).json({ error: 'Mật khẩu cần từ 6 ký tự trở lên.' });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ error: 'Mật khẩu xác nhận không khớp.' });
+    }
+    if (usersByName.has(phone)) {
+      return res.status(400).json({ error: 'Số điện thoại này đã được đăng ký.' });
+    }
+
     const id = crypto.randomUUID();
-    const record = { id, username: cleanName, passwordHash: hashPassword(password), email: null };
+    const record = {
+      id,
+      phone,
+      username: phone,
+      role: 'member',
+      passwordHash: hashPassword(password),
+      email: null,
+    };
     usersById.set(id, record);
-    usersByName.set(lookupKey, id);
-    user = { id: record.id, username: record.username, email: record.email };
+    usersByName.set(phone, id);
+    user = { id: record.id, phone: record.phone, username: record.username, role: record.role, email: record.email };
   } else {
+    const rawId = data.phone ?? data.username ?? '';
+    const password = data.password ?? '';
+    if (typeof rawId !== 'string' || !rawId.trim() || typeof password !== 'string' || !password) {
+      return res.status(400).json({ error: 'Vui lòng nhập số điện thoại và mật khẩu.' });
+    }
+    const normalized = normalizePhone(rawId);
+    const lookupKey = usersByName.has(normalized) ? normalized : rawId.trim().toLowerCase();
     const existingId = usersByName.get(lookupKey);
     const record = existingId ? usersById.get(existingId) : null;
     if (!record || !verifyPassword(password, record.passwordHash)) {
-      return res.status(401).json({ error: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
+      return res.status(401).json({ error: 'Số điện thoại hoặc mật khẩu không đúng.' });
     }
-    user = { id: record.id, username: record.username, email: record.email };
+    user = {
+      id: record.id,
+      phone: record.phone,
+      username: record.username,
+      role: record.role || 'member',
+      email: record.email,
+    };
   }
 
   revokeSession(req.cookies[SESSION_COOKIE] || '');
@@ -1665,7 +1763,8 @@ app.post('/api/chat', async (req, res, next) => {
 // ESP32-S3 Hardware Integration Endpoints (from firmware/board)
 // ---------------------------------------------------------------------------
 app.post(['/xiaozhi/ota', '/xiaozhi/ota/'], authenticateDevice, (req, res) => {
-  const host = req.get('host') || `127.0.0.1:${PORT}`;
+  const forwardedHost = (req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const host = forwardedHost || req.get('host') || `127.0.0.1:${PORT}`;
   const proto = isHttpsRequest(req) ? 'wss' : 'ws';
   res.json({
     server_time: { timestamp: Date.now(), timezone_offset: 420 },

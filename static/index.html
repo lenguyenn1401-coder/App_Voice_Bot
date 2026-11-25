@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="/static/theme.js"></script>
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=3">
+  <script src="/static/app.js?v=3" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Đến nội dung chính</a>
@@ -32,6 +32,7 @@
 
     <nav class="top-nav" aria-label="Điều hướng chính">
       <a href="#iot-section">Điều khiển IoT</a>
+      <a href="#flasher-section">Nạp &amp; Serial</a>
       <a href="#calendar">Lịch tuần</a>
       <a href="#assistant">Trợ lý AI</a>
       <a href="#hardware-section">Phần cứng</a>
@@ -192,7 +193,116 @@
       </div>
     </section>
 
-    <!-- SECTION 2 & 3: CALENDAR + AGENDA/AI WORKSPACE -->
+    <!-- SECTION 2: WEB SERIAL FIRMWARE FLASHER & SERIAL MONITOR -->
+    <section id="flasher-section" class="panel" aria-labelledby="flasher-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Web Serial API &amp; esptool-js</p>
+          <h2 id="flasher-title">Nạp Firmware &amp; Serial Monitor trực tuyến</h2>
+        </div>
+        <span id="serial-support-badge" class="meta-item">Đang kiểm tra Web Serial</span>
+      </div>
+
+      <div id="serial-support-note" class="notice" hidden></div>
+
+      <div class="flasher-grid" style="margin-top: 16px;">
+        <div class="iot-block">
+          <div class="block-head">
+            <h3>Nạp Firmware ESP32-S3 qua USB</h3>
+            <span id="flash-profile-chip" class="muted small mono">ESP32-S3 · 16MB</span>
+          </div>
+
+          <div class="profile-cards" role="group" aria-label="Chọn cấu hình bo mạch">
+            <button type="button" class="profile-card active" data-fw-profile="ai-chatbot-s3">
+              <strong>ai-chatbot-s3 (Chuẩn)</strong>
+              <span>ST7789 240×240 · MAX98357A · I2S Mic</span>
+            </button>
+            <button type="button" class="profile-card" data-fw-profile="stem-display-alt">
+              <strong>ESP32-S3 Multi-Display</strong>
+              <span>Hỗ trợ OLED / ST7735 / GC9A01</span>
+            </button>
+          </div>
+
+          <dl class="spec-strip">
+            <div>
+              <dt>Vi điều khiển</dt>
+              <dd id="fw-spec-chip" class="mono">ESP32-S3 LX7</dd>
+            </div>
+            <div>
+              <dt>Bộ nhớ Flash / PSRAM</dt>
+              <dd id="fw-spec-mem" class="mono">16MB · Octal</dd>
+            </div>
+            <div>
+              <dt>Offset mặc định</dt>
+              <dd id="fw-spec-offset" class="mono">0x0000</dd>
+            </div>
+          </dl>
+
+          <div class="form-columns">
+            <div class="field">
+              <label for="flash-baudrate">Tốc độ nạp (Baudrate)</label>
+              <select id="flash-baudrate">
+                <option value="460800" selected>460,800 bps (Khuyên dùng)</option>
+                <option value="921600">921,600 bps (Siêu tốc)</option>
+                <option value="115200">115,200 bps (Ổn định cáp dài)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="flash-offset">Địa chỉ nạp (Hex Offset)</label>
+              <input id="flash-offset" type="text" class="mono" value="0x0000" placeholder="0x0000 hoặc 0x10000">
+            </div>
+          </div>
+
+          <div class="file-picker-row">
+            <span id="flash-file-name">Chưa chọn tệp firmware (.bin)</span>
+            <input id="flash-bin-file" type="file" accept=".bin">
+          </div>
+
+          <div class="action-row">
+            <button id="btn-flash-firmware" class="button primary full-width" type="button">
+              Nạp Firmware (.bin) qua cổng COM
+            </button>
+          </div>
+
+          <div id="flash-progress-box" class="progress-box" hidden>
+            <strong id="flash-progress-status">Đang chuẩn bị kết nối…</strong>
+            <div class="progress-track">
+              <div id="flash-progress-fill" class="progress-fill"></div>
+            </div>
+            <div class="progress-meta mono tabular">
+              <span id="flash-progress-bytes">0 / 0 bytes</span>
+              <span id="flash-progress-pct">0%</span>
+            </div>
+            <div id="flash-terminal-log" class="serial-terminal compact"></div>
+          </div>
+        </div>
+
+        <div class="iot-block">
+          <div class="block-head">
+            <h3>Serial Monitor (115,200 bps)</h3>
+            <div class="action-row">
+              <button id="mon-sim-btn" class="button subtle" type="button">Log mẫu</button>
+              <button id="mon-clear-btn" class="button subtle" type="button">Xóa</button>
+              <button id="mon-toggle-btn" class="button primary" type="button">Mở cổng Serial</button>
+            </div>
+          </div>
+
+          <p class="muted small" style="margin:0;">
+            Đọc log khởi động, địa chỉ IP Wi-Fi và trạng thái đồng bộ của kit ESP32-S3 theo thời gian thực.
+          </p>
+
+          <div id="mon-terminal" class="serial-terminal" tabindex="0" aria-live="polite">Nhấn "Mở cổng Serial" để kết nối USB UART (115,200 baud), hoặc bấm "Log mẫu" để xem chu trình khởi động kit ESP32-S3...</div>
+
+          <form id="mon-send-form" class="serial-send-row">
+            <label class="sr-only" for="mon-send-input">Lệnh gửi xuống Serial</label>
+            <input id="mon-send-input" type="text" placeholder="Nhập lệnh gửi xuống mạch (ví dụ: status, reboot)…" autocomplete="off">
+            <button id="mon-send-btn" class="button subtle" type="submit" disabled>Gửi</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3 & 4: CALENDAR + AGENDA/AI WORKSPACE -->
     <div class="workspace">
       <div class="main-column">
         <section id="calendar" class="panel calendar-panel" aria-labelledby="calendar-title">
@@ -306,6 +416,62 @@
               </ul>
             </div>
           </div>
+
+          <div class="guide-grid">
+            <div class="iot-block">
+              <h3>Hướng dẫn nạp &amp; xử lý lỗi kết nối (4 bước)</h3>
+              <div class="guide-list">
+                <div class="guide-step">
+                  <span class="step-num">1</span>
+                  <div>
+                    <strong>Dùng cáp USB truyền dữ liệu (Data Cable)</strong>
+                    <p>Cắm trực tiếp vào cổng USB-UART hoặc USB-OTG trên kit ESP32-S3 (tránh cáp chỉ sạc).</p>
+                  </div>
+                </div>
+                <div class="guide-step">
+                  <span class="step-num">2</span>
+                  <div>
+                    <strong>Chọn tệp .bin và cổng COM</strong>
+                    <p>Bấm "Nạp Firmware" ở trên, chọn đúng cổng CH340 / CP210x / USB JTAG Serial.</p>
+                  </div>
+                </div>
+                <div class="guide-step">
+                  <span class="step-num">3</span>
+                  <div>
+                    <strong>Nếu báo Timeout khi bắt tay mạch</strong>
+                    <p>Nhấn giữ nút <b>BOOT (GPIO0)</b>, bấm nhả nút <b>RST</b>, rồi thả <b>BOOT</b> và nạp lại.</p>
+                  </div>
+                </div>
+                <div class="guide-step">
+                  <span class="step-num">4</span>
+                  <div>
+                    <strong>Kiểm tra Wi-Fi &amp; Token trên Serial Monitor</strong>
+                    <p>Mở Serial Monitor 115,200 baud để xem IP, trạng thái ghép cặp và log nhắc lịch.</p>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span class="muted small">Tải Driver USB-UART nếu máy tính chưa nhận cổng COM:</span>
+                <div class="driver-links">
+                  <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank" rel="noopener" class="driver-btn">Driver CH340 / CH341</a>
+                  <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers" target="_blank" rel="noopener" class="driver-btn">Driver CP210x</a>
+                  <a href="https://www.wch-ic.com/downloads/CH9102SER_EXE.html" target="_blank" rel="noopener" class="driver-btn">Driver CH9102</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="iot-block">
+              <div class="block-head">
+                <h3>Cấu hình máy chủ cho Firmware</h3>
+                <button id="copy-fw-config" class="button subtle" type="button">Sao chép cấu hình</button>
+              </div>
+              <p class="muted small" style="margin:0;">
+                Thông số sẵn sàng để dán vào <code>firmware/board/chatbot_local_config.h</code> hoặc cấu hình OTA/NVS trên ESP32-S3:
+              </p>
+              <pre id="fw-config-snippet" class="code-snippet-box mono"></pre>
+              <p id="fw-config-status" class="field-hint" role="status"></p>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -382,9 +548,10 @@
   <!-- Mobile Bottom Navigation -->
   <nav class="mobile-bottom-nav" aria-label="Điều hướng nhanh trên di động">
     <a href="#iot-section">IoT</a>
+    <a href="#flasher-section">Nạp</a>
     <a href="#calendar">Lịch</a>
     <a href="#assistant">Trợ lý</a>
-    <a href="#hardware-section">Phần cứng</a>
+    <a href="#hardware-section">Mạch</a>
   </nav>
 
   <!-- Dialogs -->

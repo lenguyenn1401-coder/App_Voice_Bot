@@ -1,8 +1,8 @@
-const CACHE_NAME = 'stem-iot-shell-v1';
+const CACHE_NAME = 'stem-iot-shell-v3';
 const SHELL_ASSETS = [
-  '/static/styles.css',
+  '/static/styles.css?v=3',
   '/static/theme.js',
-  '/static/app.js',
+  '/static/app.js?v=3',
   '/static/icons/icon.svg',
   '/static/icons/pwa-192x192.png',
   '/static/icons/pwa-512x512.png',
@@ -29,16 +29,15 @@ self.addEventListener('fetch', (event) => {
   }
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(
-      caches.match(event.request).then((cached) => {
-        const fetchPromise = fetch(event.request).then((response) => {
+      fetch(event.request)
+        .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
           }
           return response;
-        }).catch(() => cached);
-        return cached || fetchPromise;
-      }),
+        })
+        .catch(() => caches.match(event.request)),
     );
   }
 });

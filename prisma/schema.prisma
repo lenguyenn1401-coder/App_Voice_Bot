@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  teacher
+  student
+}
+
+enum ProjectId {
+  voicebot
+  car
+  grill
+}
+
+model User {
+  id           String         @id @default(cuid())
+  phoneOrEmail String         @unique @map("phone_or_email")
+  fullName     String         @map("full_name")
+  role         UserRole       @default(student)
+  avatarColor  String         @default("#0F62FE") @map("avatar_color")
+  passwordHash String         @map("password_hash")
+  active       Boolean        @default(true)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  permissions  Permission[]
+  commandLogs  CommandLog[]
+  conversations Conversation[]
+
+  @@map("users")
+}
+
+model Project {
+  id               ProjectId    @id
+  name             String
+  slug             String       @unique
+  description      String
+  status           String       @default("connected")
+  statusLabel      String       @map("status_label")
+  deviceId         String       @map("device_id")
+  imageUrl         String       @map("image_url")
+  safetyConfigJson Json         @map("safety_config_json")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  devices          Device[]
+  tasks            Task[]
+  permissions      Permission[]
+
+  @@map("projects")
+}
+
+model Device {
+  id              String   @id
+  projectId       ProjectId @map("project_id")
+  name            String
+  hardwareModel   String   @map("hardware_model")
+  macAddress      String   @map("mac_address")
+  firmwareVersion String   @map("firmware_version")
+  ipAddress       String   @map("ip_address")
+  wifiRssi        Int      @map("wifi_rssi")
+  online          Boolean  @default(true)
+  batteryPct      Float?   @map("battery_pct")
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+model Task {
+  id            String    @id
+  projectId     ProjectId @map("project_id")
+  code          String
+  name          String
+  componentName String    @map("component_name")
+  description   String
+  enabled       Boolean   @default(true)
+  statusText    String    @map("status_text")
+  stateJson     Json      @map("state_json")
+  sortOrder     Int       @default(0) @map("sort_order")
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}
+
+model Permission {
+  id                 String    @id @default(cuid())
+  userId             String    @map("user_id")
+  projectId          ProjectId @map("project_id")
+  canView            Boolean   @default(true) @map("can_view")
+  canControl         Boolean   @default(true) @map("can_control")
+  canChangeSafety    Boolean   @default(false) @map("can_change_safety")
+  allowedTaskIdsJson Json      @map("allowed_task_ids_json")
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("permissions")
+}
+
+model CommandLog {
+  id           String    @id @default(cuid())
+  commandId    String    @unique @map("command_id")
+  projectId    ProjectId @map("project_id")
+  taskId       String    @map("task_id")
+  deviceId     String    @map("device_id")
+  action       String
+  valueJson    Json      @map("value_json")
+  userId       String    @map("user_id")
+  userName     String    @map("user_name")
+  ackStatus    String    @map("ack_status")
+  errorMessage String?   @map("error_message")
+  mqttTopic    String    @map("mqtt_topic")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("command_logs")
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  title     String
+  mode      String
+  language  String    @default("vi")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id              String       @id @default(cuid())
+  conversationId  String       @map("conversation_id")
+  sender          String
+  text            String
+  source          String
+  mode            String
+  linkedCommandId String?      @map("linked_command_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model SensorReading {
+  id         Int       @id @default(autoincrement())
+  projectId  ProjectId @map("project_id")
+  metricKey  String    @map("metric_key")
+  metricValue Float    @map("metric_value")
+  unit       String
+  recordedAt DateTime  @default(now()) @map("recorded_at")
+
+  @@map("sensor_readings")
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  projectId  ProjectId @map("project_id")
+  severity   String
+  title      String
+  message    String
+  readByJson Json      @map("read_by_json")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("notifications")
+}

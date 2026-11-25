@@ -1,24 +1,43 @@
 services:
-  chatbot:
+  app:
     build: .
     restart: unless-stopped
     env_file:
       - .env
     environment:
       HOST: 0.0.0.0
-      PORT: 8000
+      PORT: 3000
+      NODE_ENV: production
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      DATABASE_URL: postgresql://tpstem:tpstem_secret@postgres:5432/tpstem_control
     ports:
-      - "127.0.0.1:${HOST_PORT:-8000}:8000"
+      - "${HOST_PORT:-3000}:3000"
+    depends_on:
+      - postgres
+      - mosquitto
     volumes:
-      - chatbot-data:/app/data
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:size=16m,mode=1777
+      - tpstem-data:/app/data
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tpstem
+      POSTGRES_PASSWORD: tpstem_secret
+      POSTGRES_DB: tpstem_control
+    volumes:
+      - tpstem-pg:/var/lib/postgresql/data
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - tpstem-mqtt:/mosquitto/data
 
 volumes:
-  chatbot-data:
+  tpstem-data:
+  tpstem-pg:
+  tpstem-mqtt:

@@ -66,47 +66,101 @@ document.querySelectorAll('[data-close]').forEach((button) => {
 // ---------------------------------------------------------------------------
 // Login / Registration Page
 // ---------------------------------------------------------------------------
-if (document.getElementById('auth-form')) {
-  const form = document.getElementById('auth-form');
-  const errorEl = document.getElementById('auth-error');
+if (document.getElementById('login-form')) {
+  const loginForm = document.getElementById('login-form');
+  const registerForm = document.getElementById('register-form');
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const loginError = document.getElementById('login-error');
+  const registerError = document.getElementById('register-error');
   const demoBtn = document.getElementById('demo-login');
 
-  function showAuthError(msg) {
-    errorEl.textContent = msg;
-    errorEl.hidden = !msg;
+  function showError(el, msg) {
+    el.textContent = msg;
+    el.hidden = !msg;
   }
 
-  async function authenticate(action) {
-    if (!form.reportValidity()) return;
-    showAuthError('');
-    const fields = new FormData(form);
-    const result = await fetch(`/api/auth/${action}`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'chatbot' },
-      body: JSON.stringify({
-        username: fields.get('username'),
-        password: fields.get('password'),
-      }),
-    });
-    const data = await result.json();
-    if (!result.ok) throw new Error(data.error || 'Đăng nhập thất bại.');
-    location.assign('/');
+  function switchTab(mode) {
+    const isLogin = mode === 'login';
+    loginForm.hidden = !isLogin;
+    registerForm.hidden = isLogin;
+    tabLogin.classList.toggle('active', isLogin);
+    tabRegister.classList.toggle('active', !isLogin);
+    tabLogin.setAttribute('aria-selected', String(isLogin));
+    tabRegister.setAttribute('aria-selected', String(!isLogin));
+    showError(loginError, '');
+    showError(registerError, '');
   }
 
-  form.addEventListener('submit', (event) => {
+  async function parseAuthResponse(result) {
+    const text = await result.text();
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(`Máy chủ trả về phản hồi không hợp lệ (HTTP ${result.status}).`);
+    }
+  }
+
+  tabLogin?.addEventListener('click', () => switchTab('login'));
+  tabRegister?.addEventListener('click', () => switchTab('register'));
+
+  loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    authenticate('login').catch((err) => showAuthError(err.message));
+    if (!loginForm.reportValidity()) return;
+    showError(loginError, '');
+    const fields = new FormData(loginForm);
+    try {
+      const result = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'chatbot' },
+        body: JSON.stringify({
+          phone: fields.get('phone'),
+          password: fields.get('password'),
+        }),
+      });
+      const data = await parseAuthResponse(result);
+      if (!result.ok) throw new Error(data.error || 'Đăng nhập thất bại.');
+      location.assign('/');
+    } catch (err) {
+      showError(loginError, err.message);
+    }
   });
 
-  document.getElementById('register').addEventListener('click', () => {
-    authenticate('register').catch((err) => showAuthError(err.message));
+  registerForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!registerForm.reportValidity()) return;
+    showError(registerError, '');
+    const fields = new FormData(registerForm);
+    const password = String(fields.get('password') || '');
+    const confirmPassword = String(fields.get('confirm_password') || '');
+    if (password !== confirmPassword) {
+      showError(registerError, 'Mật khẩu xác nhận không khớp.');
+      return;
+    }
+    try {
+      const result = await fetch('/api/auth/register', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'chatbot' },
+        body: JSON.stringify({
+          phone: fields.get('phone'),
+          password,
+          confirm_password: confirmPassword,
+        }),
+      });
+      const data = await parseAuthResponse(result);
+      if (!result.ok) throw new Error(data.error || 'Đăng ký thất bại.');
+      location.assign('/');
+    } catch (err) {
+      showError(registerError, err.message);
+    }
   });
 
   if (demoBtn) {
     demoBtn.addEventListener('click', async () => {
       demoBtn.disabled = true;
-      showAuthError('');
+      showError(loginError, '');
       try {
         const result = await fetch('/api/auth/demo', {
           method: 'POST',
@@ -114,20 +168,21 @@ if (document.getElementById('auth-form')) {
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'chatbot' },
           body: '{}',
         });
-        const data = await result.json();
+        const data = await parseAuthResponse(result);
         if (!result.ok) throw new Error(data.error || 'Không thể vào tài khoản Demo.');
         location.assign('/');
       } catch (err) {
-        showAuthError(err.message);
+        showError(loginError, err.message);
         demoBtn.disabled = false;
       }
     });
   }
-} else {
+} else if (document.getElementById('iot-section') && document.getElementById('week-grid')) {
 // ---------------------------------------------------------------------------
 // Main App Stem IOT Dashboard
 // ---------------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+const on = (id, eventName, handler) => $(id)?.addEventListener(eventName, handler);
 const csrf = () =>
   decodeURIComponent(
     document.cookie
@@ -368,6 +423,7 @@ function renderSelectedIotDevice() {
   $('tel-psram').textContent = `${st.telemetry.freePsramKb} KB`;
   $('tel-temp').textContent = `${Number(st.telemetry.cpuTempC).toFixed(1)} °C`;
   $('iot-last-cmd').textContent = st.lastCommand ? `Lệnh gần nhất: ${st.lastCommand.summary}` : 'Chưa gửi lệnh nào';
+  renderFirmwareConfigSnippet(device);
 }
 
 function renderDeviceList(devices) {
@@ -418,28 +474,28 @@ async function sendIotCommand(payload) {
   }
 }
 
-$('iot-device-select').addEventListener('change', (e) => {
+on('iot-device-select', 'change', (e) => {
   state.selectedDeviceId = e.target.value;
   renderSelectedIotDevice();
 });
 
-$('iot-volume').addEventListener('input', (e) => {
+on('iot-volume', 'input', (e) => {
   $('iot-volume-val').textContent = `${e.target.value}%`;
 });
-$('iot-volume').addEventListener('change', (e) => {
+on('iot-volume', 'change', (e) => {
   void sendIotCommand({ volume: Number(e.target.value) });
 });
 
-$('iot-mute-btn').addEventListener('click', () => {
+on('iot-mute-btn', 'click', () => {
   const device = state.iotDevices.find((d) => d.id === state.selectedDeviceId);
   if (!device) return;
   void sendIotCommand({ muted: !device.state.muted });
 });
 
-$('iot-backlight').addEventListener('input', (e) => {
+on('iot-backlight', 'input', (e) => {
   $('iot-backlight-val').textContent = `${e.target.value}%`;
 });
-$('iot-backlight').addEventListener('change', (e) => {
+on('iot-backlight', 'change', (e) => {
   void sendIotCommand({ backlight: Number(e.target.value) });
 });
 
@@ -450,21 +506,21 @@ document.querySelectorAll('[data-display-mode]').forEach((btn) => {
 });
 
 for (const key of ['led_status', 'relay_lab', 'buzzer_alert']) {
-  $(`gpio-${key}`).addEventListener('click', () => {
+  on(`gpio-${key}`, 'click', () => {
     const device = state.iotDevices.find((d) => d.id === state.selectedDeviceId);
     if (!device) return;
     void sendIotCommand({ gpioOutputs: { [key]: !device.state.gpioOutputs[key] } });
   });
 }
 
-$('iot-servo').addEventListener('input', (e) => {
+on('iot-servo', 'input', (e) => {
   $('iot-servo-val').textContent = `${e.target.value}°`;
 });
-$('iot-servo').addEventListener('change', (e) => {
+on('iot-servo', 'change', (e) => {
   void sendIotCommand({ gpioOutputs: { servo_angle: Number(e.target.value) } });
 });
 
-$('iot-test-reminder').addEventListener('click', async () => {
+on('iot-test-reminder', 'click', async () => {
   if (!state.selectedDeviceId) return;
   const btn = $('iot-test-reminder');
   btn.disabled = true;
@@ -480,6 +536,328 @@ $('iot-test-reminder').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Section 2: Web Serial Firmware Flasher, Serial Monitor & Config Generator
+// ---------------------------------------------------------------------------
+const FW_PROFILES = {
+  'ai-chatbot-s3': {
+    chip: 'ESP32-S3 LX7',
+    mem: '16MB · Octal',
+    offset: '0x0000',
+    badge: 'ESP32-S3 · 16MB',
+  },
+  'stem-display-alt': {
+    chip: 'ESP32-S3 Multi',
+    mem: '16MB · QIO/Octal',
+    offset: '0x10000',
+    badge: 'Multi-Display · 16MB',
+  },
+};
+
+function renderFirmwareConfigSnippet(device) {
+  const pre = $('fw-config-snippet');
+  if (!pre) return;
+  const origin = window.location.origin;
+  const devId = device?.id || state.selectedDeviceId || 'esp32s3-stem-01';
+  const mode = device?.state?.displayMode || 'schedule';
+  pre.textContent =
+`// App Stem IOT · Firmware Config (${devId})
+#pragma once
+#define CHATBOT_SERVER_URL "${origin}"
+#define STEM_DEVICE_ID     "${devId}"
+#define STEM_DISPLAY_MODE  "${mode}"
+// Endpoints:
+// OTA & WebSocket: POST ${origin}/xiaozhi/ota/
+// Reminder Poll:   GET  ${origin}/device/reminders?device_id=${devId}
+// Telemetry Push:  POST ${origin}/device/telemetry`;
+}
+renderFirmwareConfigSnippet(null);
+
+on('copy-fw-config', 'click', async () => {
+  const pre = $('fw-config-snippet');
+  if (!pre) return;
+  try {
+    await navigator.clipboard.writeText(pre.textContent);
+    $('fw-config-status').textContent = 'Đã sao chép cấu hình Firmware.';
+  } catch {
+    $('fw-config-status').textContent = 'Không tự sao chép được. Hãy bôi đen và copy thủ công.';
+  }
+});
+
+document.querySelectorAll('[data-fw-profile]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const profile = FW_PROFILES[btn.dataset.fwProfile];
+    if (!profile) return;
+    document.querySelectorAll('[data-fw-profile]').forEach((el) => {
+      el.classList.toggle('active', el === btn);
+    });
+    if ($('fw-spec-chip')) $('fw-spec-chip').textContent = profile.chip;
+    if ($('fw-spec-mem')) $('fw-spec-mem').textContent = profile.mem;
+    if ($('fw-spec-offset')) $('fw-spec-offset').textContent = profile.offset;
+    if ($('flash-profile-chip')) $('flash-profile-chip').textContent = profile.badge;
+    if ($('flash-offset')) $('flash-offset').value = profile.offset;
+  });
+});
+
+(() => {
+  const badge = $('serial-support-badge');
+  const note = $('serial-support-note');
+  const fileInput = $('flash-bin-file');
+  const fileNameLabel = $('flash-file-name');
+  const flashBtn = $('btn-flash-firmware');
+  const progressBox = $('flash-progress-box');
+  const progressStatus = $('flash-progress-status');
+  const progressFill = $('flash-progress-fill');
+  const progressBytes = $('flash-progress-bytes');
+  const progressPct = $('flash-progress-pct');
+  const flashLog = $('flash-terminal-log');
+
+  const monTerminal = $('mon-terminal');
+  const monToggleBtn = $('mon-toggle-btn');
+  const monClearBtn = $('mon-clear-btn');
+  const monSimBtn = $('mon-sim-btn');
+  const monSendForm = $('mon-send-form');
+  const monSendInput = $('mon-send-input');
+  const monSendBtn = $('mon-send-btn');
+
+  let selectedFile = null;
+  let monPort = null;
+  let monReader = null;
+  let monReading = false;
+  let isFlashing = false;
+
+  const hasWebSerial = 'serial' in navigator;
+  const inIframe = window.self !== window.top;
+  if (badge) {
+    badge.textContent = hasWebSerial ? 'Web Serial sẵn sàng' : 'Chưa hỗ trợ Web Serial';
+    badge.className = `meta-item ${hasWebSerial ? 'online' : 'offline'}`;
+  }
+  if (note && (!hasWebSerial || inIframe)) {
+    note.hidden = false;
+    note.textContent = !hasWebSerial
+      ? 'Trình duyệt hiện tại (hoặc thiết bị di động) chưa hỗ trợ Web Serial USB. Bạn vẫn có thể dùng "Log mẫu", điều khiển IoT qua Wi-Fi và sao chép cấu hình Firmware.'
+      : 'Lưu ý: Nếu trình duyệt chặn cổng COM bên trong khung xem trước (iframe), hãy mở App Stem IOT ở tab trình duyệt riêng (Chrome/Edge trên máy tính) để nạp USB trực tiếp.';
+  }
+
+  function appendTerminalLine(el, text) {
+    if (!el) return;
+    if (el.textContent.startsWith('Nhấn "Mở cổng Serial"')) {
+      el.textContent = '';
+    }
+    el.textContent += text;
+    if (el.textContent.length > 24000) {
+      el.textContent = el.textContent.slice(-18000);
+    }
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function logFlash(line) {
+    appendTerminalLine(flashLog, `${line}\n`);
+  }
+
+  fileInput?.addEventListener('change', () => {
+    selectedFile = fileInput.files?.[0] || null;
+    if (fileNameLabel) {
+      fileNameLabel.textContent = selectedFile
+        ? `${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`
+        : 'Chưa chọn tệp firmware (.bin)';
+    }
+  });
+
+  async function disconnectMonitor() {
+    monReading = false;
+    if (monReader) {
+      try {
+        await monReader.cancel();
+      } catch { /* ignore */ }
+      try {
+        monReader.releaseLock();
+      } catch { /* ignore */ }
+      monReader = null;
+    }
+    if (monPort) {
+      try {
+        await monPort.close();
+      } catch { /* ignore */ }
+      monPort = null;
+    }
+    if (monToggleBtn) {
+      monToggleBtn.textContent = 'Mở cổng Serial';
+      monToggleBtn.className = 'button primary';
+    }
+    if (monSendBtn) monSendBtn.disabled = true;
+  }
+
+  monToggleBtn?.addEventListener('click', async () => {
+    if (monPort) {
+      await disconnectMonitor();
+      appendTerminalLine(monTerminal, '\n[Serial] Đã đóng cổng COM.\n');
+      return;
+    }
+    if (!hasWebSerial) {
+      notify('Trình duyệt không hỗ trợ Web Serial API. Hãy dùng Chrome/Edge trên máy tính.');
+      return;
+    }
+    try {
+      monPort = await navigator.serial.requestPort();
+      await monPort.open({ baudRate: 115200 });
+      monReading = true;
+      monToggleBtn.textContent = 'Ngắt kết nối';
+      monToggleBtn.className = 'button danger';
+      if (monSendBtn) monSendBtn.disabled = false;
+      appendTerminalLine(monTerminal, '\n[Serial] Đã mở cổng COM @ 115,200 bps.\n');
+
+      const decoder = new TextDecoder();
+      while (monPort?.readable && monReading) {
+        monReader = monPort.readable.getReader();
+        try {
+          while (monReading) {
+            const { value, done } = await monReader.read();
+            if (done) break;
+            if (value) appendTerminalLine(monTerminal, decoder.decode(value, { stream: true }));
+          }
+        } catch (err) {
+          appendTerminalLine(monTerminal, `\n[Serial lỗi đọc]: ${err.message}\n`);
+          break;
+        } finally {
+          monReader?.releaseLock();
+          monReader = null;
+        }
+      }
+    } catch (err) {
+      await disconnectMonitor();
+      if (err?.name !== 'NotFoundError') {
+        appendTerminalLine(monTerminal, `\n[Serial]: ${err.message}\n`);
+      }
+    }
+  });
+
+  monSendForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const cmd = monSendInput?.value.trim();
+    if (!cmd || !monPort?.writable) return;
+    const writer = monPort.writable.getWriter();
+    try {
+      await writer.write(new TextEncoder().encode(`${cmd}\r\n`));
+      appendTerminalLine(monTerminal, `\n> ${cmd}\n`);
+      monSendInput.value = '';
+    } finally {
+      writer.releaseLock();
+    }
+  });
+
+  monClearBtn?.addEventListener('click', () => {
+    if (monTerminal) monTerminal.textContent = '';
+  });
+
+  monSimBtn?.addEventListener('click', () => {
+    const dev = state.iotDevices.find((d) => d.id === state.selectedDeviceId) || state.iotDevices[0];
+    const devId = dev?.id || 'esp32s3-stem-01';
+    const st = dev?.state || { volume: 75, backlight: 85, displayMode: 'schedule', telemetry: { wifiRssi: -54, freePsramKb: 7680, cpuTempC: 41.2 } };
+    const origin = window.location.origin;
+    const sample = [
+      'ESP-ROM:esp32s3-20210327',
+      'I (12) boot: ESP-IDF v5.3 · App Stem IOT (ai-chatbot-s3)',
+      `I (48) spiram: Octal PSRAM initialized · free=${st.telemetry.freePsramKb}KB`,
+      'I (105) st7789: SPI 240x240 CLK=9 MOSI=10 RST=18 DC=8 CS=14 BL=13',
+      `I (112) st7789: Backlight=${st.backlight}% · Mode=${st.displayMode}`,
+      `I (140) i2s_audio: Mic(WS=4,SCK=5,DIN=6) 16kHz | MAX98357A(LRC=16,BCLK=15,DOUT=7) vol=${st.volume}%`,
+      `I (410) wifi: connected · RSSI=${st.telemetry.wifiRssi}dBm · Temp=${st.telemetry.cpuTempC}C`,
+      `I (520) ota: POST ${origin}/xiaozhi/ota/ [device=${devId}] -> 200 OK`,
+      `I (680) reminder_client: Polling ${origin}/device/reminders -> READY`,
+    ].join('\n');
+    appendTerminalLine(monTerminal, `\n${sample}\n`);
+  });
+
+  flashBtn?.addEventListener('click', async () => {
+    if (isFlashing) return;
+    if (!hasWebSerial) {
+      notify('Trình duyệt hiện tại không hỗ trợ Web Serial API. Hãy dùng Chrome hoặc Edge trên máy tính.');
+      return;
+    }
+    if (!selectedFile) {
+      notify('Vui lòng chọn tệp firmware (.bin) trước khi bấm nạp.');
+      fileInput?.click();
+      return;
+    }
+    const offsetRaw = ($('flash-offset')?.value || '0x0000').trim();
+    const address = Number.parseInt(offsetRaw, 16);
+    if (!Number.isFinite(address) || address < 0) {
+      notify('Địa chỉ offset không hợp lệ (ví dụ: 0x0000 hoặc 0x10000).');
+      return;
+    }
+
+    isFlashing = true;
+    flashBtn.disabled = true;
+    if (progressBox) progressBox.hidden = false;
+    if (flashLog) flashLog.textContent = '';
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressPct) progressPct.textContent = '0%';
+    if (progressBytes) progressBytes.textContent = `0 / ${selectedFile.size} bytes`;
+    if (progressStatus) progressStatus.textContent = 'Đang chọn cổng COM và nạp thư viện esptool-js…';
+
+    let transport = null;
+    try {
+      await disconnectMonitor();
+      const baudrate = Number($('flash-baudrate')?.value || 460800);
+      const [{ ESPLoader, Transport }, fileBuf] = await Promise.all([
+        import('https://unpkg.com/esptool-js@0.7.1/bundle.js'),
+        selectedFile.arrayBuffer(),
+      ]);
+
+      const port = await navigator.serial.requestPort();
+      transport = new Transport(port, true);
+      const terminal = {
+        clean: () => { if (flashLog) flashLog.textContent = ''; },
+        writeLine: (line) => logFlash(line),
+        write: (chunk) => appendTerminalLine(flashLog, chunk),
+      };
+
+      const esploader = new ESPLoader({ transport, baudrate, terminal });
+      if (progressStatus) progressStatus.textContent = 'Đang kết nối bootloader ESP32-S3…';
+      await esploader.main();
+
+      const bytes = new Uint8Array(fileBuf);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+
+      if (progressStatus) progressStatus.textContent = `Đang nạp ${selectedFile.name} tại ${offsetRaw}…`;
+      await esploader.writeFlash({
+        fileArray: [{ data: binary, address }],
+        flashSize: 'keep',
+        eraseAll: false,
+        compress: true,
+        reportProgress: (_idx, written, total) => {
+          const pct = total ? Math.round((written / total) * 100) : 0;
+          if (progressFill) progressFill.style.width = `${pct}%`;
+          if (progressPct) progressPct.textContent = `${pct}%`;
+          if (progressBytes) progressBytes.textContent = `${written} / ${total} bytes`;
+        },
+      });
+
+      if (progressStatus) progressStatus.textContent = 'Nạp firmware thành công! Đang khởi động lại mạch…';
+      await transport.setDTR(false);
+      await transport.setRTS(true);
+      await new Promise((r) => setTimeout(r, 120));
+      await transport.setRTS(false);
+      notify('Đã nạp firmware ESP32-S3 thành công!');
+    } catch (err) {
+      if (progressStatus) progressStatus.textContent = 'Nạp firmware chưa hoàn tất.';
+      logFlash(`[Lỗi]: ${err?.message || err}`);
+      if (err?.name !== 'NotFoundError') notify(err?.message || 'Lỗi nạp firmware.');
+    } finally {
+      if (transport) {
+        try { await transport.disconnect(); } catch { /* ignore */ }
+      }
+      isFlashing = false;
+      flashBtn.disabled = false;
+    }
+  });
+})();
 
 // ---------------------------------------------------------------------------
 // Calendar, Day Agenda, Reminders, Preferences
@@ -1183,9 +1561,11 @@ setInterval(() => {
 }, 10000);
 void api('/auth/me')
   .then((data) => {
-    const name = data.user?.username || 'Đã đăng nhập';
-    $('account-identity').textContent = name;
-    $('account-label').textContent = name;
+    const user = data.user || {};
+    const phoneOrName = user.phone || user.username || 'Đã đăng nhập';
+    const roleLabel = user.role === 'admin' ? 'Quản trị viên' : 'Thành viên';
+    $('account-identity').textContent = `${roleLabel} · ${phoneOrName}`;
+    $('account-label').textContent = user.role === 'admin' ? 'Quản trị viên' : phoneOrName;
   })
   .catch(() => {});
 }

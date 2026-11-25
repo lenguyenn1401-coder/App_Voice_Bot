@@ -16,8 +16,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="/static/theme.js"></script>
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/app.js" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=3">
+  <script src="/static/app.js?v=3" defer></script>
 </head>
 <body class="auth-body">
   <a class="skip-link" href="#main">Đến nội dung chính</a>
@@ -57,29 +57,48 @@
 
     <section class="panel auth-card" aria-labelledby="signin-heading">
       <h2 id="signin-heading">Truy cập không gian làm việc</h2>
-      <p class="muted">Dùng ngay tài khoản mẫu có sẵn thiết bị ESP32-S3 hoặc đăng ký tài khoản mới của riêng bạn.</p>
+      <p class="muted">Đăng nhập bằng tài khoản quản trị viên hoặc tạo tài khoản mới bằng số điện thoại.</p>
 
-      <button id="demo-login" class="button primary full-width" type="button">
+      <div class="segmented two-cols" role="tablist" aria-label="Chế độ tài khoản">
+        <button id="tab-login" type="button" class="seg-btn active" role="tab" aria-selected="true" aria-controls="login-form">Đăng nhập</button>
+        <button id="tab-register" type="button" class="seg-btn" role="tab" aria-selected="false" aria-controls="register-form">Tạo tài khoản mới</button>
+      </div>
+
+      <form id="login-form" class="stack-form">
+        <div class="field">
+          <label for="login-phone">Số điện thoại</label>
+          <input id="login-phone" name="phone" type="tel" required autocomplete="tel" maxlength="20" placeholder="Ví dụ: 0901234567">
+        </div>
+        <div class="field">
+          <label for="login-password">Mật khẩu</label>
+          <input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength="1024" placeholder="Nhập mật khẩu">
+        </div>
+        <p id="login-error" class="field-error" role="alert" hidden></p>
+        <button type="submit" class="button primary full-width">Đăng nhập</button>
+      </form>
+
+      <form id="register-form" class="stack-form" hidden>
+        <div class="field">
+          <label for="reg-phone">Số điện thoại</label>
+          <input id="reg-phone" name="phone" type="tel" required autocomplete="tel" maxlength="20" placeholder="Ví dụ: 0912345678">
+        </div>
+        <div class="field">
+          <label for="reg-password">Mật khẩu (tối thiểu 6 ký tự)</label>
+          <input id="reg-password" name="password" type="password" required autocomplete="new-password" minlength="6" maxlength="1024" placeholder="Nhập mật khẩu">
+        </div>
+        <div class="field">
+          <label for="reg-confirm">Xác nhận mật khẩu</label>
+          <input id="reg-confirm" name="confirm_password" type="password" required autocomplete="new-password" minlength="6" maxlength="1024" placeholder="Nhập lại mật khẩu">
+        </div>
+        <p id="register-error" class="field-error" role="alert" hidden></p>
+        <button type="submit" class="button primary full-width">Tạo tài khoản mới</button>
+      </form>
+
+      <div class="divider-label"><span>hoặc</span></div>
+
+      <button id="demo-login" class="button subtle full-width" type="button">
         Vào nhanh với tài khoản Demo (ESP32-S3)
       </button>
-
-      <div class="divider-label"><span>hoặc đăng nhập / đăng ký</span></div>
-
-      <form id="auth-form" class="stack-form">
-        <div class="field">
-          <label for="auth-username">Tên đăng nhập</label>
-          <input id="auth-username" name="username" required autocomplete="username" maxlength="80" placeholder="Ví dụ: lop_stem_01">
-        </div>
-        <div class="field">
-          <label for="auth-password">Mật khẩu (tối thiểu 12 ký tự khi đăng ký)</label>
-          <input id="auth-password" name="password" type="password" required autocomplete="current-password" minlength="12" maxlength="1024" placeholder="••••••••••••">
-        </div>
-        <p id="auth-error" class="field-error" role="alert" hidden></p>
-        <div class="action-row">
-          <button type="submit" class="button primary">Đăng nhập</button>
-          <button type="button" id="register" class="button subtle">Tạo tài khoản</button>
-        </div>
-      </form>
 
       <details class="legacy-details">
         <summary>Đăng nhập bằng mã truy cập quản trị</summary>
